@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # Load your trained diffusion model
     diffusion_model = DiffusionModel(input_dim=input_dim, num_timesteps=num_timesteps, device=device).to(device)
     checkpoint = torch.load('models_DM/epoch-300.pt', map_location=device)
-    diffusion_model.load_state_dict(checkpoint['model_DM'])
+    diffusion_model.load_state_dict(checkpoint['model'])
 
     # Set model to evaluation mode
     diffusion_model.eval()

@@ -44,7 +44,7 @@ if __name__ == "__main__":
         print(f"Generating samples for {e} eV (index {i})")
         
         fixed_value_5th_dim = torch.tensor([[float(e)]], device=device)
-        gen = flow_model.sample(num_samples=10000, context=fixed_value_5th_dim)
+        gen = flow_model.sample(num_samples=sim.shape[0], context=fixed_value_5th_dim)
         gen = np.squeeze(gen.cpu().detach().numpy(), axis=0)
         #print(gen)
 
@@ -64,4 +64,4 @@ if __name__ == "__main__":
         ax.set_ylabel("Arbitrary units")
         plt.legend(fontsize=17)
         plt.tight_layout()
-        plt.savefig(f"/web/aratey/public_html/delight/nf/gen_{i}.png",bbox_inches='tight',dpi=300)
+        plt.savefig(f"/web/aratey/public_html/delight/gen_{i}.png",bbox_inches='tight',dpi=300)
