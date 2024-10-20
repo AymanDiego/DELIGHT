@@ -10,8 +10,8 @@ if __name__ == "__main__":
     # Set up the model
     input_dim = 4
     context_dim = 1
-    hidden_dim = 64
-    num_layers = 5
+    hidden_dim = 128
+    num_layers = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Instantiate the model architecture
@@ -57,11 +57,31 @@ if __name__ == "__main__":
         plt.hist(gen[:,2],histtype='step',bins=15,label='UV channel',color='gold')
         plt.hist(sim[:,2],histtype='step',bins=15,linestyle='dashed',color='gold')
         plt.hist(gen[:,3],histtype='step',bins=15,label='IR channel',color='cornflowerblue')
-        plt.hist(sim[:,3],histtype='step',bins=15,linestyle='dashed',color='cornflowerblue')
+        plt.hist(simport numpy as np
+
+# Assuming you have your generated samples as a NumPy array, you can load or check them here:
+generated_samples = np.load('path_to_generated_samples.npy')  # Replace with your actual file
+
+# Check if there are any negative values in the generated samples
+min_value = np.amin(generated_samples)
+
+if min_value < 0:
+    print(f"Negative values found! Minimum value: {min_value}")
+else:
+    print("No negative values found.")
+
+# If you want to check for specific columns like phonon, triplet, UV, and IR channels separately:
+for i in range(generated_samples.shape[1]):
+    min_col_value = np.amin(generated_samples[:, i])
+    if min_col_value < 0:
+        print(f"Negative values found in column {i}! Minimum value: {min_col_value}")
+    else:
+        print(f"No negative values found in column {i}.")
+im[:,3],histtype='step',bins=15,linestyle='dashed',color='cornflowerblue')
         plt.text(0.05,0.90,"Nuclear recoil",transform=ax.transAxes,fontsize=18)
         plt.text(0.05,0.82,"$E_\mathrm{NR}=%.0f$ eV"%e,transform=ax.transAxes,fontsize=18)
         ax.set_xlabel("$E$ (eV)",labelpad=20)
         ax.set_ylabel("Arbitrary units")
         plt.legend(fontsize=17)
         plt.tight_layout()
-        plt.savefig(f"/web/aratey/public_html/delight/gen_{i}.png",bbox_inches='tight',dpi=300)
+        plt.savefig(f"/web/aratey/public_html/delight/nf/models_nf/run_6/gen_{i}.png",bbox_inches='tight',dpi=300)

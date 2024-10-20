@@ -1,3 +1,9 @@
 # Ignore all .pt files
 *.pt
 
+# Ignore models directories and all their subdirectories
+models/
+models_DM/
+models_NR_200/
+__pycache__/
+
