@@ -35,6 +35,8 @@ def parse_args():
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for optimizer')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
 
+    parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
+
     return parser.parse_args()
 
 # Logger setup
@@ -72,7 +74,19 @@ def save_hyperparameters_to_csv(input_dim, context_dim, hidden_dim, num_layers, 
         "energy_threshold": energy_threshold
     }
     df = pd.DataFrame([hyperparams])
-    df.to_csv(f"/web/aratey/public_html/delight/nf/models_nf/hyperparameters.csv", index=False)
+    df.to_csv(f"{save_dir}/hyperparameters.csv", index=False)
+
+# Function to normalize the energy channels
+def normalize_energies(data):
+    means = np.mean(data, axis=0)  # Mean for each channel
+    stds = np.std(data, axis=0)    # Standard deviation for each channel
+    normalized_data = (data - means) / stds  # Normalize each channel
+    return normalized_data, means, stds
+
+# Save normalization parameters (means and stds) for later inference use
+def save_normalization_params(means, stds, model_dir):
+    df = pd.DataFrame({"means": means, "stds": stds})
+    df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
 
 # Training the flow model
 def train_conditional_flow_model(flow_model, data_train, context_train, data_val, context_val, num_epochs, batch_size=512, learning_rate=1e-3, weight_decay=1e-5, model_dir='models/', noise_magnitude=0.1, energy_threshold=5000):
@@ -129,7 +143,7 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     
     # Save loss data to a CSV file
     df = pd.DataFrame({"loss_train": all_losses_train, "loss_val": all_losses_val})
-    df.to_csv(f"/web/aratey/public_html/delight/nf/models_nf/loss.csv")
+    df.to_csv(f"{save_dir}/loss.csv")
 
     fig, ax = plt.subplots()
     plt.yscale('log')
@@ -138,8 +152,8 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     plt.legend()
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.savefig(f"/web/aratey/public_html/delight/nf/models_nf/loss.png", bbox_inches='tight', dpi=300)
-    plt.savefig(f"/web/aratey/public_html/delight/nf/models_nf/loss.pdf", bbox_inches='tight')
+    plt.savefig(f"{save_dir}/loss.png", bbox_inches='tight', dpi=300)
+    plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
 
 def concat_files(filelist, cutoff):
     e_array = np.geomspace(10, 1e6, 500)
@@ -160,6 +174,19 @@ if __name__ == "__main__":
     args = parse_args()
     logger = setup_logger()
 
+    # Base directory
+    base_dir = "/web/aratey/public_html/delight/nf/models_nf/"
+
+    # Append loss_dir if provided
+    if args.loss_dir:
+        save_dir = os.path.join(base_dir, args.loss_dir)
+    else:
+        save_dir = base_dir
+
+    # Ensure the directory exists
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     cutoff_e = 0.  # eV. Ignore interactions below that.
     logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
 
@@ -174,6 +201,15 @@ if __name__ == "__main__":
     random.shuffle(files_train)
     data_train = concat_files(files_train, cutoff_e)
     data_val = concat_files(files_val, cutoff_e)
+
+    # Normalize the training and validation data
+    data_train_4d, means_train, stds_train = normalize_energies(data_train[:, :4])
+    context_train_5d = data_train[:, 4:5]  # Context is not normalized
+    data_val_4d, means_val, stds_val = normalize_energies(data_val[:, :4])
+    context_val_5d = data_val[:, 4:5]  # Context is not normalized
+
+    # Save normalization parameters for future use
+    save_normalization_params(means_train, stds_train, args.model_dir)
 
     # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 128, 8 layers)
     input_dim = 4
@@ -190,7 +226,7 @@ if __name__ == "__main__":
     save_hyperparameters_to_csv(input_dim, context_dim, hidden_dim, num_layers, args.learning_rate, args.num_epochs, args.weight_decay, args.noise_magnitude, args.energy_threshold, args.model_dir)
 
     # Train the model
-    train_conditional_flow_model(flow_model, data_train[:, :4], data_train[:, 4:5], data_val[:, :4], data_val[:, 4:5], num_epochs=args.num_epochs, model_dir=args.model_dir, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
+    train_conditional_flow_model(flow_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=args.num_epochs, model_dir=args.model_dir, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
 
     logger.info(f'Done training.')
 

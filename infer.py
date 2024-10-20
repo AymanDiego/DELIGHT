@@ -1,3 +1,4 @@
+import os
 import glob
 import matplotlib.pyplot as plt
 import mplhep as hep
@@ -6,7 +7,31 @@ import numpy as np
 import torch
 from model import ConditionalNormalizingFlowModel  # Importing the model from model.py
 
+# ArgumentParser to handle command-line arguments
+def parse_args():
+    parser = argparse.ArgumentParser(description="Infer Conditional Normalizing Flow Model")
+
+    # Add argument for generated plots
+    parser.add_argument('--plot_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
+
+    return parser.parse_args()
+
 if __name__ == "__main__":
+    args = parse_args()  # Parse command-line arguments
+
+    # Base directory
+    base_dir = "/web/aratey/public_html/delight/nf/models_nf/"
+
+    # Append loss_dir if provided
+    if args.loss_dir:
+        save_dir = os.path.join(base_dir, args.loss_dir)
+    else:
+        save_dir = base_dir
+
+    # Ensure the directory exists
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     # Set up the model
     input_dim = 4
     context_dim = 1
@@ -19,69 +44,49 @@ if __name__ == "__main__":
 
     # Load the saved model weights
     checkpoint = torch.load('models/epoch-300.pt', map_location=device)
-    flow_model.load_state_dict(checkpoint['model'])
+    flow_model.load_state_dict(checkpoint['model'])  # Ensure key matches the saved model
 
     # Switch to evaluation mode
     flow_model.eval()
 
     # Example: Generate samples
-    # Interesting values to sample: 1.14847155e+01, 1.00462506e+02, 1.00927151e+03, 1.01393946e+04, 9.95396231e+04
     energies = np.geomspace(10, 1e6, 500)
 
-    for i,e in enumerate(energies):
+    for i, e in enumerate(energies):
         if i % 50 != 0:
             continue
 
         print(f"Loading simulated data corresponding to index {i}")
 
+        # Loading the simulated data files for the given energy index
         for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
-            sim = None
-            if sim is None:
-                sim = np.load(f)[:, :4]
-            else:
-                sim = np.concatenate((sim, np.load(f)[:, :4]))                                    
-            
+            sim = np.load(f)[:, :4]
+
         print(f"Generating samples for {e} eV (index {i})")
-        
+
+        # Generate samples using the flow model
         fixed_value_5th_dim = torch.tensor([[float(e)]], device=device)
         gen = flow_model.sample(num_samples=sim.shape[0], context=fixed_value_5th_dim)
         gen = np.squeeze(gen.cpu().detach().numpy(), axis=0)
-        #print(gen)
 
-        
-        fig,ax = plt.subplots(figsize=(7,6))
-        plt.hist(gen[:,0],histtype='step',bins=15,label='phonon channel',color='indianred')
-        plt.hist(sim[:,0],histtype='step',bins=15,linestyle='dashed',color='indianred')
-        plt.hist(gen[:,1],histtype='step',bins=15,label='triplet channel',color='grey')
-        plt.hist(sim[:,1],histtype='step',bins=15,linestyle='dashed',color='grey')
-        plt.hist(gen[:,2],histtype='step',bins=15,label='UV channel',color='gold')
-        plt.hist(sim[:,2],histtype='step',bins=15,linestyle='dashed',color='gold')
-        plt.hist(gen[:,3],histtype='step',bins=15,label='IR channel',color='cornflowerblue')
-        plt.hist(simport numpy as np
+        # Plot and save the histograms for different channels
+        fig, ax = plt.subplots(figsize=(7, 6))
+        plt.hist(gen[:, 0], histtype='step', bins=15, label='phonon channel', color='indianred')
+        plt.hist(sim[:, 0], histtype='step', bins=15, linestyle='dashed', color='indianred')
+        plt.hist(gen[:, 1], histtype='step', bins=15, label='triplet channel', color='grey')
+        plt.hist(sim[:, 1], histtype='step', bins=15, linestyle='dashed', color='grey')
+        plt.hist(gen[:, 2], histtype='step', bins=15, label='UV channel', color='gold')
+        plt.hist(sim[:, 2], histtype='step', bins=15, linestyle='dashed', color='gold')
+        plt.hist(gen[:, 3], histtype='step', bins=15, label='IR channel', color='cornflowerblue')
+        plt.hist(sim[:, 3], histtype='step', bins=15, linestyle='dashed', color='cornflowerblue')
 
-# Assuming you have your generated samples as a NumPy array, you can load or check them here:
-generated_samples = np.load('path_to_generated_samples.npy')  # Replace with your actual file
-
-# Check if there are any negative values in the generated samples
-min_value = np.amin(generated_samples)
-
-if min_value < 0:
-    print(f"Negative values found! Minimum value: {min_value}")
-else:
-    print("No negative values found.")
-
-# If you want to check for specific columns like phonon, triplet, UV, and IR channels separately:
-for i in range(generated_samples.shape[1]):
-    min_col_value = np.amin(generated_samples[:, i])
-    if min_col_value < 0:
-        print(f"Negative values found in column {i}! Minimum value: {min_col_value}")
-    else:
-        print(f"No negative values found in column {i}.")
-im[:,3],histtype='step',bins=15,linestyle='dashed',color='cornflowerblue')
-        plt.text(0.05,0.90,"Nuclear recoil",transform=ax.transAxes,fontsize=18)
-        plt.text(0.05,0.82,"$E_\mathrm{NR}=%.0f$ eV"%e,transform=ax.transAxes,fontsize=18)
-        ax.set_xlabel("$E$ (eV)",labelpad=20)
+        plt.text(0.05, 0.90, "Nuclear recoil", transform=ax.transAxes, fontsize=18)
+        plt.text(0.05, 0.82, "$E_\mathrm{NR}=%.0f$ eV" % e, transform=ax.transAxes, fontsize=18)
+        ax.set_xlabel("$E$ (eV)", labelpad=20)
         ax.set_ylabel("Arbitrary units")
         plt.legend(fontsize=17)
         plt.tight_layout()
-        plt.savefig(f"/web/aratey/public_html/delight/nf/models_nf/run_6/gen_{i}.png",bbox_inches='tight',dpi=300)
+
+        # Save the generated plots to the specified directory
+        plt.savefig(f"{save_dir}/gen_{i}.png", bbox_inches='tight', dpi=300)
+

@@ -17,6 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Diffusion Model")
     parser.add_argument('--device', type=str, default='cuda:0', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
     parser.add_argument('--model_dir', type=str, default='models_DM/', help='Directory to save the model checkpoints')
+    parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--file_pattern', type=str, default='all', help='Specify file pattern: "all" for all files or a specific pattern like NR_final_200_*.npy')
     parser.add_argument('--num_timesteps', type=int, default=1000, help="Number of diffusion timesteps")
     parser.add_argument('--noise_magnitude', type=float, default=0.1, help="Magnitude of noise to apply to energy values")
@@ -52,6 +53,31 @@ def concat_files(filelist, cutoff):
             all_data = np.concatenate((all_data, np.load(f)[:, :4]))
     energy = np.sum(all_data, axis=1).reshape(-1, 1)
     return np.concatenate((all_data, energy), axis=1)
+
+# Function to save hyperparameters to CSV
+def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, energy_threshold, model_dir):
+    hyperparams = {
+        "input_dim": input_dim,
+        "num_timesteps": num_timesteps,
+        "learning_rate": learning_rate,
+        "num_epochs": num_epochs,
+        "weight_decay": weight_decay,
+        "noise_magnitude": noise_magnitude,
+        "energy_threshold": energy_threshold
+    }
+    df = pd.DataFrame([hyperparams])
+    df.to_csv(f"{save_dir}/hyperparameters.csv", index=False)
+
+# Function to normalize the energy channels
+def normalize_energies(data):
+    means = np.mean(data, axis=0)  # Mean for each channel
+    stds = np.std(data, axis=0)    # Standard deviation for each channel
+    normalized_data = (data - means) / stds  # Normalize each channel
+    return normalized_data, means, stds
+
+# Save normalization parameters (means and stds) for later inference use
+def save_normalization_params(means, stds, model_dir):
+    df = pd.DataFrame({"means": means, "stds": stds})                                                                                                                                  df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
 
 def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301, batch_size=512, learning_rate=1e-3, weight_decay=1e-5, model_dir='models_DM/', num_timesteps=1000, noise_magnitude=0.1, energy_threshold=50.0):
     optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -107,7 +133,7 @@ def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301,
 
     # Save loss data to a CSV file
     df = pd.DataFrame({"loss_train": all_losses_train, "loss_val": all_losses_val})
-    df.to_csv("loss.csv")
+    df.to_csv(f"{save_dir}/loss.csv")
 
     fig, ax = plt.subplots()
     plt.yscale('log')
@@ -116,12 +142,26 @@ def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301,
     plt.legend()
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.savefig("/web/aratey/public_html/delight/nf/models_DM/loss.png", bbox_inches='tight', dpi=300)
-    plt.savefig("/web/aratey/public_html/delight/nf/models_DM/loss.pdf", bbox_inches='tight')
+    plt.savefig("{save_dir}/loss.png", bbox_inches='tight', dpi=300)
+    plt.savefig("{save_dir}/loss.pdf", bbox_inches='tight')
 
 if __name__ == "__main__":
     args = parse_args()
     logger = setup_logger()
+
+     # Base directory
+    base_dir = "/web/aratey/public_html/delight/nf/models_DM/"
+
+    # Append loss_dir if provided
+    if args.loss_dir:
+        save_dir = os.path.join(base_dir, args.loss_dir)
+    else:
+        save_dir = base_dir
+
+    # Ensure the directory exists
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     cutoff_e = 0.0
     logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
 
@@ -137,5 +177,12 @@ if __name__ == "__main__":
     data_val = concat_files(files_val, cutoff_e)
 
     diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device).to(args.device)
+
+    # Save the hyperparameters before training starts
+    save_hyperparameters_to_csv(input_dim=4, num_timesteps=args.num_timesteps, learning_rate=1e-3,
+                                num_epochs=301, weight_decay=1e-5, noise_magnitude=args.noise_magnitude,
+                                energy_threshold=args.energy_threshold, model_dir=args.model_dir)
+
+    # Train the model
     train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301, model_dir=args.model_dir, num_timesteps=args.num_timesteps, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
 
