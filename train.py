@@ -85,7 +85,11 @@ def normalize_energies(data):
 
 # Save normalization parameters (means and stds) for later inference use
 def save_normalization_params(means, stds, model_dir):
-    df = pd.DataFrame({"means": means, "stds": stds})
+    # Ensure the directory exists before saving
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
+
+    df = pd.DataFrame({"channel": ["phonon", "triplet", "UV", "IR"], "means": means, "stds": stds})
     df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
 
 # Training the flow model

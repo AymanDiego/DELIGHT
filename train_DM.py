@@ -77,7 +77,8 @@ def normalize_energies(data):
 
 # Save normalization parameters (means and stds) for later inference use
 def save_normalization_params(means, stds, model_dir):
-    df = pd.DataFrame({"means": means, "stds": stds})                                                                                                                                  df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
+    df = pd.DataFrame({"means": means, "stds": stds})
+    df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
 
 def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301, batch_size=512, learning_rate=1e-3, weight_decay=1e-5, model_dir='models_DM/', num_timesteps=1000, noise_magnitude=0.1, energy_threshold=50.0):
     optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -142,8 +143,8 @@ def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301,
     plt.legend()
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.savefig("{save_dir}/loss.png", bbox_inches='tight', dpi=300)
-    plt.savefig("{save_dir}/loss.pdf", bbox_inches='tight')
+    plt.savefig(f"{save_dir}/loss.png", bbox_inches='tight', dpi=300)
+    plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
 
 if __name__ == "__main__":
     args = parse_args()
