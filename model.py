@@ -30,7 +30,7 @@ class ConditionalNormalizingFlowModel(nn.Module):
                     in_features=in_features,
                     out_features=out_features,
                     hidden_features=hidden_dim,
-                    context_features=context_dim,  # This allows us to condition on the context
+                    context_features=context_dim,  # This allows us to condition on the contex
                     num_blocks=2,
                     activation=nn.Softplus()  # Apply Softplus to ensure positive outputs
                 ).to(self.device)

@@ -27,12 +27,12 @@ def parse_args():
     parser.add_argument('--file_pattern', type=str, default='all', help='Specify file pattern: "all" for all files or a specific pattern like NR_final_200_*.npy')
     
     # Add argument for the noise magnitude and energy threshold for noise application
-    parser.add_argument('--noise_magnitude', type=float, default=0.1, help='Magnitude of the noise to apply to small energies')
+    parser.add_argument('--noise_magnitude', type=float, default=0.05, help='Magnitude of the noise to apply to small energies')
     parser.add_argument('--energy_threshold', type=float, default=5000, help='Energy threshold below which noise is applied')
 
     # Add argument for number of epochs, learning rate, weight decay
     parser.add_argument('--num_epochs', type=int, default=301, help='Number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for optimizer')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
 
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
@@ -93,9 +93,10 @@ def save_normalization_params(means, stds, model_dir):
     df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
 
 # Training the flow model
-def train_conditional_flow_model(flow_model, data_train, context_train, data_val, context_val, num_epochs, batch_size=512, learning_rate=1e-3, weight_decay=1e-5, model_dir='models/', noise_magnitude=0.1, energy_threshold=5000):
+def train_conditional_flow_model(flow_model, data_train, context_train, data_val, context_val, num_epochs, batch_size=512, learning_rate=1e-4, weight_decay=1e-5, model_dir='models/', noise_magnitude=0.1, energy_threshold=5000):
     optimizer = torch.optim.Adam(flow_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
+    # Decay learning rate after every 50 epochs
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
     
     data_train = torch.tensor(data_train, dtype=torch.float32, device=flow_model.device)
     context_train = torch.tensor(context_train, dtype=torch.float32, device=flow_model.device)
@@ -125,6 +126,7 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
             loss = -flow_model(batch_data, batch_context).mean()  # Maximize the log probability
             total_loss_train += loss.item()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(flow_model.parameters(), max_norm=1.0)  # Clip gradients to avoid large updates
             optimizer.step()
 
         scheduler.step()

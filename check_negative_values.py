@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # Load your trained Normalizing Flow model
     flow_model = ConditionalNormalizingFlowModel(input_dim=input_dim, context_dim=context_dim, hidden_dim=hidden_dim, num_layers=num_layers, device=device).to(device)
     
-    checkpoint = torch.load('models/epoch-300.pt', map_location=device)  # Update this to the correct model file if needed
+    checkpoint = torch.load('models/run_7/epoch-300.pt', map_location=device)  # Update this to the correct model file if needed
     flow_model.load_state_dict(checkpoint['model'])  # Ensure the key 'model' is correct for loading
 
     # Set model to evaluation mode

@@ -14,7 +14,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Infer Diffusion Model")
 
     # Add argument for generated plots
-    parser.add_argument('--plot_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
+    parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--epoch_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
 
     return parser.parse_args()
@@ -36,9 +36,9 @@ if __name__ == "__main__":
     # Base directory
     base_dir = "/web/aratey/public_html/delight/nf/models_DM/"
 
-    # Append plot_dir if provided
-    if args.plot_dir:
-        save_dir = os.path.join(base_dir, args.plot_dir)
+    # Append loss_dir if provided
+    if args.loss_dir:
+        save_dir = os.path.join(base_dir, args.loss_dir)
     else:
         save_dir = base_dir
 

@@ -80,9 +80,9 @@ def save_normalization_params(means, stds, model_dir):
     df = pd.DataFrame({"means": means, "stds": stds})
     df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
 
-def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301, batch_size=512, learning_rate=1e-3, weight_decay=1e-5, model_dir='models_DM/', num_timesteps=1000, noise_magnitude=0.1, energy_threshold=50.0):
+def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301, batch_size=512, learning_rate=1e-4, weight_decay=1e-5, model_dir='models_DM/', num_timesteps=1000, noise_magnitude=0.1, energy_threshold=50.0):
     optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.7)
 
     # Move data to the device
     data_train = apply_noise(data_train, energy_column=4, noise_magnitude=noise_magnitude, energy_threshold=energy_threshold)
@@ -123,7 +123,7 @@ def train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301,
                 loss_val = diffusion_model.compute_loss(batch_data, batch_context)
                 total_loss_val += loss_val.item()
 
-        scheduler.step(total_loss_val / len(dataloader_val))
+        scheduler.step()
         print(f"Epoch {epoch}: Train Loss = {total_loss_train / len(dataloader_train)}, Val Loss = {total_loss_val / len(dataloader_val)}")
 
         all_losses_train.append(total_loss_train / len(dataloader_train))
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     args = parse_args()
     logger = setup_logger()
 
-     # Base directory
+    # Base directory
     base_dir = "/web/aratey/public_html/delight/nf/models_DM/"
 
     # Append loss_dir if provided
@@ -180,7 +180,7 @@ if __name__ == "__main__":
     diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device).to(args.device)
 
     # Save the hyperparameters before training starts
-    save_hyperparameters_to_csv(input_dim=4, num_timesteps=args.num_timesteps, learning_rate=1e-3,
+    save_hyperparameters_to_csv(input_dim=4, num_timesteps=args.num_timesteps, learning_rate=1e-4,
                                 num_epochs=301, weight_decay=1e-5, noise_magnitude=args.noise_magnitude,
                                 energy_threshold=args.energy_threshold, model_dir=args.model_dir)
 

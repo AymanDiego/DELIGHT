@@ -5,6 +5,7 @@ import mplhep as hep
 hep.style.use(hep.style.ATLAS)
 import numpy as np
 import torch
+import argparse  # This is the missing import
 from model import ConditionalNormalizingFlowModel  # Importing the model from model.py
 
 # ArgumentParser to handle command-line arguments
@@ -12,7 +13,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Infer Conditional Normalizing Flow Model")
 
     # Add argument for generated plots
-    parser.add_argument('--plot_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
+    parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
+    parser.add_argument('--epoch_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
 
     return parser.parse_args()
 
@@ -43,7 +45,7 @@ if __name__ == "__main__":
     flow_model = ConditionalNormalizingFlowModel(input_dim, context_dim, hidden_dim, num_layers, device).to(device)
 
     # Load the saved model weights
-    checkpoint = torch.load('models/epoch-300.pt', map_location=device)
+    checkpoint = torch.load(f'models/{args.epoch_dir}/epoch-300.pt', map_location=device)
     flow_model.load_state_dict(checkpoint['model'])  # Ensure key matches the saved model
 
     # Switch to evaluation mode
