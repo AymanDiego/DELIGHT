@@ -71,6 +71,11 @@ if __name__ == "__main__":
         gen = flow_model.sample(num_samples=sim.shape[0], context=fixed_value_5th_dim)
         gen = np.squeeze(gen.cpu().detach().numpy(), axis=0)
 
+        # Loop through each channel (0 to 3) and print the values of gen[:, *]
+        for channel in range(4):
+            print(f"Values for channel {channel}:")
+            print(gen[:, channel])
+
         # Plot and save the histograms for different channels
         fig, ax = plt.subplots(figsize=(7, 6))
         plt.hist(gen[:, 0], histtype='step', bins=15, label='phonon channel', color='indianred')

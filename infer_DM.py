@@ -49,7 +49,7 @@ if __name__ == "__main__":
     # Set up model parameters
     input_dim = 4  # Make sure this matches the model's trained input dimension
     num_timesteps = 1000
-    num_samples = 10000
+    num_samples = 1000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Load your trained diffusion model

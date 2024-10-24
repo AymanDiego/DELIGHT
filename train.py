@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument('--file_pattern', type=str, default='all', help='Specify file pattern: "all" for all files or a specific pattern like NR_final_200_*.npy')
     
     # Add argument for the noise magnitude and energy threshold for noise application
-    parser.add_argument('--noise_magnitude', type=float, default=0.05, help='Magnitude of the noise to apply to small energies')
+    parser.add_argument('--noise_magnitude', type=float, default=0.0, help='Magnitude of the noise to apply to small energies')
     parser.add_argument('--energy_threshold', type=float, default=5000, help='Energy threshold below which noise is applied')
 
     # Add argument for number of epochs, learning rate, weight decay
@@ -36,6 +36,12 @@ def parse_args():
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
 
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
+
+    # Add argument for optional energy normalization
+    parser.add_argument('--normalize_energies', action='store_true', help='Flag to apply energy normalization (mean 0, stddev 1)')
+
+    # Add argument for the cutoff energy
+    parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy value. Ignore events below this energy in eV.')
 
     return parser.parse_args()
 
@@ -83,6 +89,12 @@ def normalize_energies(data):
     normalized_data = (data - means) / stds  # Normalize each channel
     return normalized_data, means, stds
 
+# Function to check means and stds after normalization
+def check_normalized_stats(normalized_data):
+    post_means = np.mean(normalized_data, axis=0)
+    post_stds = np.std(normalized_data, axis=0)
+    return post_means, post_stds
+
 # Save normalization parameters (means and stds) for later inference use
 def save_normalization_params(means, stds, model_dir):
     # Ensure the directory exists before saving
@@ -91,6 +103,19 @@ def save_normalization_params(means, stds, model_dir):
 
     df = pd.DataFrame({"channel": ["phonon", "triplet", "UV", "IR"], "means": means, "stds": stds})
     df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
+
+# Function to save post-normalization statistics to CSV
+def save_post_normalization_params(post_means, post_stds, loss_dir):
+    # Ensure the directory exists before saving
+    if not os.path.exists(loss_dir):
+        os.makedirs(loss_dir)
+
+    df = pd.DataFrame({
+        "channel": ["phonon", "triplet", "UV", "IR"],
+        "post_means": post_means,
+        "post_stds": post_stds
+    })
+    df.to_csv(f"{loss_dir}/post_normalization_params.csv", index=False)
 
 # Training the flow model
 def train_conditional_flow_model(flow_model, data_train, context_train, data_val, context_val, num_epochs, batch_size=512, learning_rate=1e-4, weight_decay=1e-5, model_dir='models/', noise_magnitude=0.1, energy_threshold=5000):
@@ -106,6 +131,18 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     # Apply noise to the training data using context (energy) as the criterion
     data_train = apply_noise(data_train, context_train, noise_magnitude=noise_magnitude, energy_threshold=energy_threshold)
     
+    # Plot the noisy input data
+    fig, ax = plt.subplots(figsize=(7, 6))
+    plt.hist(data_train[:, 0].cpu().numpy(), histtype='step', bins=15, label='phonon channel', color='indianred')
+    plt.hist(data_train[:, 1].cpu().numpy(), histtype='step', bins=15, label='triplet channel', color='grey')
+    plt.hist(data_train[:, 2].cpu().numpy(), histtype='step', bins=15, label='UV channel', color='gold')
+    plt.hist(data_train[:, 3].cpu().numpy(), histtype='step', bins=15, label='IR channel', color='cornflowerblue')
+    ax.set_xlabel("$E$ (eV)", labelpad=20)
+    ax.set_ylabel("Arbitrary units")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{save_dir}/noisy_input_epoch_{epoch}.png", bbox_inches='tight', dpi=300)
+
     dataset_train = torch.utils.data.TensorDataset(data_train, context_train)
     dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     dataset_val = torch.utils.data.TensorDataset(data_val, context_val)
@@ -193,7 +230,7 @@ if __name__ == "__main__":
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    cutoff_e = 0.  # eV. Ignore interactions below that.
+    cutoff_e = args.cutoff_e  # eV. Ignore interactions below that.
     logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
 
     if args.file_pattern == 'all':
@@ -209,13 +246,41 @@ if __name__ == "__main__":
     data_val = concat_files(files_val, cutoff_e)
 
     # Normalize the training and validation data
-    data_train_4d, means_train, stds_train = normalize_energies(data_train[:, :4])
-    context_train_5d = data_train[:, 4:5]  # Context is not normalized
-    data_val_4d, means_val, stds_val = normalize_energies(data_val[:, :4])
-    context_val_5d = data_val[:, 4:5]  # Context is not normalized
+    if args.normalize_energies:
+        logger.info("Applying energy normalization...")
+        data_train_4d, means_train, stds_train = normalize_energies(data_train[:, :4])
+        context_train_5d = data_train[:, 4:5]  # Context is not normalized
+        data_val_4d, means_val, stds_val = normalize_energies(data_val[:, :4])
+        context_val_5d = data_val[:, 4:5]  # Context is not normalized
 
-    # Save normalization parameters for future use
-    save_normalization_params(means_train, stds_train, args.model_dir)
+        # Save normalization parameters for future use
+        save_normalization_params(means_train, stds_train, args.model_dir)
+    
+        # Check post-normalization stats
+        post_means_train, post_stds_train = check_normalized_stats(data_train_4d)
+        post_means_val, post_stds_val = check_normalized_stats(data_val_4d)
+
+        # Save post-normalization parameters to loss_dir
+        save_post_normalization_params(post_means_train, post_stds_train, args.loss_dir)
+
+        # Plot the normalized data
+        fig, ax = plt.subplots(figsize=(7, 6))
+        plt.hist(data_train_4d[:, 0], histtype='step', bins=15, label='phonon channel (normalized)', color='indianred')
+        plt.hist(data_train_4d[:, 1], histtype='step', bins=15, label='triplet channel (normalized)', color='grey')
+        plt.hist(data_train_4d[:, 2], histtype='step', bins=15, label='UV channel (normalized)', color='gold')
+        plt.hist(data_train_4d[:, 3], histtype='step', bins=15, label='IR channel (normalized)', color='cornflowerblue')
+        ax.set_xlabel("Normalized Energy", labelpad=20)
+        ax.set_ylabel("Arbitrary units")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{save_dir}/normalized_data_epoch_{epoch}.png", bbox_inches='tight', dpi=300)
+
+    else:
+        logger.info("Skipping energy normalization...")
+        data_train_4d = data_train[:, :4]
+        context_train_5d = data_train[:, 4:5]  # Context is not normalized
+        data_val_4d = data_val[:, :4]
+        context_val_5d = data_val[:, 4:5]  # Context is not normalized
 
     # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 128, 8 layers)
     input_dim = 4
@@ -227,6 +292,10 @@ if __name__ == "__main__":
 
     # Create and move the model to the appropriate device
     flow_model = ConditionalNormalizingFlowModel(input_dim, context_dim, hidden_dim, num_layers, device).to(device)
+
+    # Calculate and print the number of trainable parameters
+    num_params = sum(p.numel() for p in flow_model.parameters() if p.requires_grad)
+    logger.info(f"Number of trainable parameters: {num_params}")
 
     # Save hyperparameters
     save_hyperparameters_to_csv(input_dim, context_dim, hidden_dim, num_layers, args.learning_rate, args.num_epochs, args.weight_decay, args.noise_magnitude, args.energy_threshold, args.model_dir)
