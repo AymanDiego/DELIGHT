@@ -64,6 +64,20 @@ def apply_noise(data, context, noise_magnitude, energy_threshold):
     mask = context[:, 0] < energy_threshold
     noise = noise_magnitude * torch.randn_like(data[mask])
     data[mask] += noise
+
+    # Plot the noisy input data for each epoch
+    if noise_magnitude > 0:
+        fig, ax = plt.subplots(figsize=(7, 6))
+        plt.hist(data_train[:, 0].cpu().numpy(), histtype='step', bins=15, label='phonon channel', color='indianred')
+        plt.hist(data_train[:, 1].cpu().numpy(), histtype='step', bins=15, label='triplet channel', color='grey')
+        plt.hist(data_train[:, 2].cpu().numpy(), histtype='step', bins=15, label='UV channel', color='gold')
+        plt.hist(data_train[:, 3].cpu().numpy(), histtype='step', bins=15, label='IR channel', color='cornflowerblue')
+        ax.set_xlabel("$E$ (eV)", labelpad=20)
+        ax.set_ylabel("Arbitrary units")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{save_dir}/noisy_input.png", bbox_inches='tight', dpi=300)
+
     return data
 
 # Function to save hyperparameters to CSV
@@ -115,7 +129,7 @@ def save_post_normalization_params(post_means, post_stds, loss_dir):
         "post_means": post_means,
         "post_stds": post_stds
     })
-    df.to_csv(f"{loss_dir}/post_normalization_params.csv", index=False)
+    df.to_csv(f"{save_dir}/post_normalization_params.csv", index=False)
 
 # Training the flow model
 def train_conditional_flow_model(flow_model, data_train, context_train, data_val, context_val, num_epochs, batch_size=512, learning_rate=1e-4, weight_decay=1e-5, model_dir='models/', noise_magnitude=0.1, energy_threshold=5000):
@@ -131,18 +145,6 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     # Apply noise to the training data using context (energy) as the criterion
     data_train = apply_noise(data_train, context_train, noise_magnitude=noise_magnitude, energy_threshold=energy_threshold)
     
-    # Plot the noisy input data
-    fig, ax = plt.subplots(figsize=(7, 6))
-    plt.hist(data_train[:, 0].cpu().numpy(), histtype='step', bins=15, label='phonon channel', color='indianred')
-    plt.hist(data_train[:, 1].cpu().numpy(), histtype='step', bins=15, label='triplet channel', color='grey')
-    plt.hist(data_train[:, 2].cpu().numpy(), histtype='step', bins=15, label='UV channel', color='gold')
-    plt.hist(data_train[:, 3].cpu().numpy(), histtype='step', bins=15, label='IR channel', color='cornflowerblue')
-    ax.set_xlabel("$E$ (eV)", labelpad=20)
-    ax.set_ylabel("Arbitrary units")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{save_dir}/noisy_input_epoch_{epoch}.png", bbox_inches='tight', dpi=300)
-
     dataset_train = torch.utils.data.TensorDataset(data_train, context_train)
     dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     dataset_val = torch.utils.data.TensorDataset(data_val, context_val)
@@ -153,10 +155,12 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
 
     all_losses_train = []
     all_losses_val = []
+
     for epoch in range(num_epochs):
         total_loss_train = 0
         total_loss_val = 0
         flow_model.train()
+
         for batch in tqdm.tqdm(dataloader_train, desc=f"Training epoch {epoch}"):
             batch_data, batch_context = batch
             optimizer.zero_grad()
@@ -273,7 +277,7 @@ if __name__ == "__main__":
         ax.set_ylabel("Arbitrary units")
         plt.legend()
         plt.tight_layout()
-        plt.savefig(f"{save_dir}/normalized_data_epoch_{epoch}.png", bbox_inches='tight', dpi=300)
+        plt.savefig(f"{save_dir}/normalized_data.png", bbox_inches='tight', dpi=300)
 
     else:
         logger.info("Skipping energy normalization...")

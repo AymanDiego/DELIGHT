@@ -5,6 +5,7 @@ import mplhep as hep
 hep.style.use(hep.style.ATLAS)
 import numpy as np
 import torch
+import pandas as pd
 import argparse  # This is the missing import
 from model import ConditionalNormalizingFlowModel  # Importing the model from model.py
 
@@ -15,8 +16,15 @@ def parse_args():
     # Add argument for generated plots
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--epoch_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
-
+    parser.add_argument('--normalize_energies', action='store_true', help='Flag to re-transform normalized energies to original scale')
     return parser.parse_args()
+
+# Function to load normalization parameters
+def load_normalization_params(model_dir):
+    params_df = pd.read_csv((f'models/{args.epoch_dir}/normalization_params.csv')
+    means = params_df["means"].values
+    stds = params_df["stds"].values
+    return means, stds
 
 if __name__ == "__main__":
     args = parse_args()  # Parse command-line arguments
@@ -37,7 +45,7 @@ if __name__ == "__main__":
     # Set up the model
     input_dim = 4
     context_dim = 1
-    hidden_dim = 128
+    hidden_dim = 64
     num_layers = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -71,6 +79,10 @@ if __name__ == "__main__":
         gen = flow_model.sample(num_samples=sim.shape[0], context=fixed_value_5th_dim)
         gen = np.squeeze(gen.cpu().detach().numpy(), axis=0)
 
+        # Apply reverse transformation if normalization was applied
+        if args.normalize_energies:
+            gen = gen * stds + means  # Reverse transformation: (normalized value * std) + mean
+
         # Loop through each channel (0 to 3) and print the values of gen[:, *]
         for channel in range(4):
             print(f"Values for channel {channel}:")
@@ -79,13 +91,13 @@ if __name__ == "__main__":
         # Plot and save the histograms for different channels
         fig, ax = plt.subplots(figsize=(7, 6))
         plt.hist(gen[:, 0], histtype='step', bins=15, label='phonon channel', color='indianred')
-        plt.hist(sim[:, 0], histtype='step', bins=15, linestyle='dashed', color='indianred')
+'''        plt.hist(sim[:, 0], histtype='step', bins=15, linestyle='dashed', color='indianred')'''
         plt.hist(gen[:, 1], histtype='step', bins=15, label='triplet channel', color='grey')
-        plt.hist(sim[:, 1], histtype='step', bins=15, linestyle='dashed', color='grey')
+'''        plt.hist(sim[:, 1], histtype='step', bins=15, linestyle='dashed', color='grey')'''
         plt.hist(gen[:, 2], histtype='step', bins=15, label='UV channel', color='gold')
-        plt.hist(sim[:, 2], histtype='step', bins=15, linestyle='dashed', color='gold')
+'''       plt.hist(sim[:, 2], histtype='step', bins=15, linestyle='dashed', color='gold')'''
         plt.hist(gen[:, 3], histtype='step', bins=15, label='IR channel', color='cornflowerblue')
-        plt.hist(sim[:, 3], histtype='step', bins=15, linestyle='dashed', color='cornflowerblue')
+'''        plt.hist(sim[:, 3], histtype='step', bins=15, linestyle='dashed', color='cornflowerblue')'''
 
         plt.text(0.05, 0.90, "Nuclear recoil", transform=ax.transAxes, fontsize=18)
         plt.text(0.05, 0.82, "$E_\mathrm{NR}=%.0f$ eV" % e, transform=ax.transAxes, fontsize=18)
