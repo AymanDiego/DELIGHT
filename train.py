@@ -289,8 +289,8 @@ if __name__ == "__main__":
     # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 128, 8 layers)
     input_dim = 4
     context_dim = 1
-    hidden_dim = 128
-    num_layers = 8
+    hidden_dim = 64
+    num_layers = 4
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     logger.info(f'Training on {device}')
 

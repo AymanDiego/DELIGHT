@@ -21,7 +21,7 @@ def parse_args():
 
 # Function to load normalization parameters
 def load_normalization_params(model_dir):
-    params_df = pd.read_csv((f'models/{args.epoch_dir}/normalization_params.csv')
+    params_df = pd.read_csv(f'models/{args.epoch_dir}/normalization_params.csv')
     means = params_df["means"].values
     stds = params_df["stds"].values
     return means, stds
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # Set up the model
     input_dim = 4
     context_dim = 1
-    hidden_dim = 64
+    hidden_dim = 128
     num_layers = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -91,14 +91,13 @@ if __name__ == "__main__":
         # Plot and save the histograms for different channels
         fig, ax = plt.subplots(figsize=(7, 6))
         plt.hist(gen[:, 0], histtype='step', bins=15, label='phonon channel', color='indianred')
-'''        plt.hist(sim[:, 0], histtype='step', bins=15, linestyle='dashed', color='indianred')'''
+        plt.hist(sim[:, 0], histtype='step', bins=15, linestyle='dashed', color='indianred')
         plt.hist(gen[:, 1], histtype='step', bins=15, label='triplet channel', color='grey')
-'''        plt.hist(sim[:, 1], histtype='step', bins=15, linestyle='dashed', color='grey')'''
+        plt.hist(sim[:, 1], histtype='step', bins=15, linestyle='dashed', color='grey')
         plt.hist(gen[:, 2], histtype='step', bins=15, label='UV channel', color='gold')
-'''       plt.hist(sim[:, 2], histtype='step', bins=15, linestyle='dashed', color='gold')'''
+        plt.hist(sim[:, 2], histtype='step', bins=15, linestyle='dashed', color='gold')
         plt.hist(gen[:, 3], histtype='step', bins=15, label='IR channel', color='cornflowerblue')
-'''        plt.hist(sim[:, 3], histtype='step', bins=15, linestyle='dashed', color='cornflowerblue')'''
-
+        plt.hist(sim[:, 3], histtype='step', bins=15, linestyle='dashed', color='cornflowerblue')
         plt.text(0.05, 0.90, "Nuclear recoil", transform=ax.transAxes, fontsize=18)
         plt.text(0.05, 0.82, "$E_\mathrm{NR}=%.0f$ eV" % e, transform=ax.transAxes, fontsize=18)
         ax.set_xlabel("$E$ (eV)", labelpad=20)
