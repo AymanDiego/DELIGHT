@@ -45,8 +45,8 @@ if __name__ == "__main__":
     # Set up the model
     input_dim = 4
     context_dim = 1
-    hidden_dim = 128
-    num_layers = 8
+    hidden_dim = 64
+    num_layers = 4
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Instantiate the model architecture

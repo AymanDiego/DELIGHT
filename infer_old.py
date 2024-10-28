@@ -11,7 +11,7 @@ if __name__ == "__main__":
     input_dim = 4
     context_dim = 1
     hidden_dim = 128
-    num_layers = 5
+    num_layers = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Instantiate the model architecture
@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     # Load the saved model weights
     checkpoint = torch.load('models/run_old_1/epoch-300.pt', map_location=device)
-    flow_model.load_state_dict(checkpoint)  # Match the state_dict key to 'model'
+    flow_model.load_state_dict(checkpoint['model'])  # Only load the 'model' part of the checkpoint
 
     # Switch to evaluation mode
     flow_model.eval()
