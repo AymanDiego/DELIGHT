@@ -134,8 +134,7 @@ def save_post_normalization_params(post_means, post_stds, loss_dir):
 # Training the flow model
 def train_conditional_flow_model(flow_model, data_train, context_train, data_val, context_val, num_epochs, batch_size=512, learning_rate=1e-4, weight_decay=1e-5, model_dir='models/', noise_magnitude=0.1, energy_threshold=5000):
     optimizer = torch.optim.Adam(flow_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    # Decay learning rate after every 50 epochs
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-6)
     
     data_train = torch.tensor(data_train, dtype=torch.float32, device=flow_model.device)
     context_train = torch.tensor(context_train, dtype=torch.float32, device=flow_model.device)
@@ -170,16 +169,18 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
             torch.nn.utils.clip_grad_norm_(flow_model.parameters(), max_norm=1.0)  # Clip gradients to avoid large updates
             optimizer.step()
 
-        scheduler.step()
-
-        # Validate
+        # Validation
         flow_model.eval()
-        for batch in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
-            with torch.no_grad():
+        with torch.no_grad():
+            for batch in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
                 batch_data, batch_context = batch
                 loss_val = -flow_model(batch_data, batch_context).mean()
                 total_loss_val += loss_val.item()
 
+        # Adjust learning rate based on validation loss
+        scheduler.step(total_loss_val / len(dataloader_val))
+
+        # Print loss every epoch
         print(f"Epoch {epoch}, Train Loss: {total_loss_train / len(dataloader_train.dataset)}, Val Loss: {total_loss_val / len(dataloader_val.dataset)}")
         all_losses_train.append(total_loss_train / len(dataloader_train.dataset))
         all_losses_val.append(total_loss_val / len(dataloader_val.dataset))
@@ -244,6 +245,9 @@ if __name__ == "__main__":
         files_train = glob.glob(f"/ceph/aratey/delight/ml/nf/data/train/{args.file_pattern}")
         files_val = glob.glob(f"/ceph/aratey/delight/ml/nf/data/val/{args.file_pattern}")
 
+    # Log the file pattern being used
+    logger.info(f'Using file pattern: {args.file_pattern}')
+
     random.seed(123)
     random.shuffle(files_train)
     data_train = concat_files(files_train, cutoff_e)
@@ -289,8 +293,8 @@ if __name__ == "__main__":
     # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 128, 8 layers)
     input_dim = 4
     context_dim = 1
-    hidden_dim = 64
-    num_layers = 4
+    hidden_dim = 128
+    num_layers = 8
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     logger.info(f'Training on {device}')
 
@@ -305,7 +309,7 @@ if __name__ == "__main__":
     save_hyperparameters_to_csv(input_dim, context_dim, hidden_dim, num_layers, args.learning_rate, args.num_epochs, args.weight_decay, args.noise_magnitude, args.energy_threshold, args.model_dir)
 
     # Train the model
-    train_conditional_flow_model(flow_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=args.num_epochs, model_dir=args.model_dir, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
+    train_conditional_flow_model(flow_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=args.num_epochs, model_dir=args.model_dir, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold, learning_rate=args.learning_rate, weight_decay=args.weight_decay)
 
     logger.info(f'Done training.')
 

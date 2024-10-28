@@ -45,8 +45,8 @@ if __name__ == "__main__":
     # Set up the model
     input_dim = 4
     context_dim = 1
-    hidden_dim = 64
-    num_layers = 4
+    hidden_dim = 128
+    num_layers = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Instantiate the model architecture
@@ -70,7 +70,11 @@ if __name__ == "__main__":
 
         # Loading the simulated data files for the given energy index
         for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
-            sim = np.load(f)[:, :4]
+            sim = None
+            if sim is None:
+                sim = np.load(f)[:, :4]
+            else:
+                sim = np.concatenate((sim, np.load(f)[:, :4]))
 
         print(f"Generating samples for {e} eV (index {i})")
 
