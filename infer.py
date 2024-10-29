@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # Set up the model
     input_dim = 4
     context_dim = 1
-    hidden_dim = 128
+    hidden_dim = 256
     num_layers = 8
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -59,27 +59,20 @@ if __name__ == "__main__":
     # Switch to evaluation mode
     flow_model.eval()
 
-    # Example: Generate samples
-    energies = np.geomspace(10, 1e6, 500)
+    # Load normalization parameters if needed
+    if args.normalize_energies:
+        means, stds = load_normalization_params(args.epoch_dir)
 
-    for i, e in enumerate(energies):
-        if i % 50 != 0:
-            continue
+    # Sample energies from simulation files
+    for i, f in enumerate(glob.glob("/ceph/aratey/delight/ml/nf/data/NR_final_*.npy")):
+        print(f"Processing file {f}")
 
-        print(f"Loading simulated data corresponding to index {i}")
+        # Load simulated data and calculate total energy as the sum across all channels
+        sim = np.load(f)[:, :4]
+        energy_sum = np.sum(sim, axis=1).reshape(-1, 1)
 
-        # Loading the simulated data files for the given energy index
-        for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
-            sim = None
-            if sim is None:
-                sim = np.load(f)[:, :4]
-            else:
-                sim = np.concatenate((sim, np.load(f)[:, :4]))
-
-        print(f"Generating samples for {e} eV (index {i})")
-
-        # Generate samples using the flow model
-        fixed_value_5th_dim = torch.tensor([[float(e)]], device=device)
+        # Generate samples with the flow model using calculated energy as context
+        fixed_value_5th_dim = torch.tensor(energy_sum, device=device, dtype=torch.float32)
         gen = flow_model.sample(num_samples=sim.shape[0], context=fixed_value_5th_dim)
         gen = np.squeeze(gen.cpu().detach().numpy(), axis=0)
 
@@ -111,4 +104,3 @@ if __name__ == "__main__":
 
         # Save the generated plots to the specified directory
         plt.savefig(f"{save_dir}/gen_{i}.png", bbox_inches='tight', dpi=300)
-

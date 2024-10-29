@@ -116,7 +116,7 @@ def save_normalization_params(means, stds, model_dir):
         os.makedirs(model_dir)
 
     df = pd.DataFrame({"channel": ["phonon", "triplet", "UV", "IR"], "means": means, "stds": stds})
-    df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
+    df.to_csv(f"{save_dir}/normalization_params.csv", index=False)
 
 # Function to save post-normalization statistics to CSV
 def save_post_normalization_params(post_means, post_stds, loss_dir):
@@ -204,19 +204,31 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
 
 def concat_files(filelist, cutoff):
-    e_array = np.geomspace(10, 1e6, 500)
+    """
+    Concatenates files and calculates energy by summing across all channels.
+    Ignores interactions with total energy below the specified cutoff.
+    """
     all_data = None
-    for f in tqdm.tqdm(filelist, desc="Loading data into array"):
-        idx = int(f.split("NR_final_")[-1].split("_")[0])
-        if e_array[idx] < cutoff:
-            continue
+
+    for f in tqdm.tqdm(filelist, desc="Loading and processing data"):
+        # Load file and retrieve all four channels
+        data = np.load(f)[:, :4]
+
+        # Calculate energy as the sum of all channels
+        energy = np.sum(data, axis=1).reshape(-1, 1)
+
+        # Filter out entries below the cutoff energy
+        valid_entries = energy >= cutoff
+        data = data[valid_entries.ravel()]
+        energy = energy[valid_entries.ravel()]
+
+        # Concatenate data if not empty
         if all_data is None:
-            all_data = np.load(f)[:, :4]
+            all_data = np.concatenate((data, energy), axis=1)
         else:
-            all_data = np.concatenate((all_data, np.load(f)[:, :4]))
-    energy = np.sum(all_data, axis=1).reshape(-1, 1)
-    
-    return np.concatenate((all_data, energy), axis=1)
+            all_data = np.concatenate((all_data, np.concatenate((data, energy), axis=1)), axis=0)
+
+    return all_data
 
 if __name__ == "__main__":
     args = parse_args()
@@ -293,7 +305,7 @@ if __name__ == "__main__":
     # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 128, 8 layers)
     input_dim = 4
     context_dim = 1
-    hidden_dim = 128
+    hidden_dim = 256
     num_layers = 8
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     logger.info(f'Training on {device}')
