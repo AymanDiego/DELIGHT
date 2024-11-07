@@ -18,7 +18,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Conditional Normalizing Flow Model")
     
     # Add argument for GPU selection
-    parser.add_argument('--device', type=str, default='cuda:0', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
+    parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
     
     # Add argument for specifying the directory to save model files
     parser.add_argument('--model_dir', type=str, default='models/', help='Directory to save the model checkpoints')
@@ -209,13 +209,14 @@ def concat_files(filelist, cutoff):
     Ignores interactions with total energy below the specified cutoff.
     """
     all_data = None
-
     for f in tqdm.tqdm(filelist, desc="Loading and processing data"):
         # Load file and retrieve all four channels
         data = np.load(f)[:, :4]
 
         # Calculate energy as the sum of all channels
         energy = np.sum(data, axis=1).reshape(-1, 1)
+        print(f)
+        print(energy[0])
 
         # Filter out entries below the cutoff energy
         valid_entries = energy >= cutoff
@@ -305,7 +306,7 @@ if __name__ == "__main__":
     # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 128, 8 layers)
     input_dim = 4
     context_dim = 1
-    hidden_dim = 256
+    hidden_dim = 128
     num_layers = 8
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     logger.info(f'Training on {device}')
