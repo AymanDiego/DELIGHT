@@ -15,13 +15,14 @@ def parse_args():
 
     # Add argument for generated plots
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
-    parser.add_argument('--epoch_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
+    parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
     parser.add_argument('--normalize_energies', action='store_true', help='Flag to re-transform normalized energies to original scale')
+    parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
     return parser.parse_args()
 
 # Function to load normalization parameters
-def load_normalization_params(model_dir):
-    params_df = pd.read_csv(f'models/{args.epoch_dir}/normalization_params.csv')
+def load_normalization_params(save_dir):
+    params_df = pd.read_csv(f'{save_dir}/normalization_params.csv')
     means = params_df["means"].values
     stds = params_df["stds"].values
     return means, stds
@@ -47,17 +48,21 @@ if __name__ == "__main__":
     context_dim = 1
     hidden_dim = 128
     num_layers = 8
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
     # Instantiate the model architecture
     flow_model = ConditionalNormalizingFlowModel(input_dim, context_dim, hidden_dim, num_layers, device).to(device)
 
     # Load the saved model weights
-    checkpoint = torch.load(f'models/{args.epoch_dir}/epoch-300.pt', map_location=device)
+    checkpoint = torch.load(f'{args.model_dir}/epoch-300.pt', map_location=device)
     flow_model.load_state_dict(checkpoint['model'])  # Ensure key matches the saved model
 
     # Switch to evaluation mode
     flow_model.eval()
+
+    # Load normalization parameters if needed
+    if args.normalize_energies:
+        means, stds = load_normalization_params(save_dir)
 
     # Example: Generate samples
     energies = np.geomspace(10, 1e6, 500)
