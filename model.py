@@ -22,11 +22,6 @@ def sample_step_inference(model, x, t, condition, alpha_bar):
 def sample_step(model, x, t, condition, alpha_bar):
 
     noise_pred = model(x, t, condition)
-    print("XXXXXXX Nominator")
-    print((x - noise_pred * (1 - alpha_bar[t]).sqrt()))
-    print("XXXXXXX Denominator")
-    print(alpha_bar[t].sqrt())
-
     return (x - noise_pred * (1 - alpha_bar[t]).sqrt()) / alpha_bar[t].sqrt()
 
 def diffusion_loss(model, x, condition, noise_schedule, timesteps):
@@ -81,6 +76,10 @@ class AttentionDiffusionModel(nn.Module):
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, data_dim)
 
+
+        # Initialize Softplus to enforce positive outputs
+        self.softplus = nn.Softplus()
+
     def forward(self, x, t, condition):
         # Concatenate data with condition
         x = torch.cat([x, condition], dim=-1)
@@ -92,8 +91,9 @@ class AttentionDiffusionModel(nn.Module):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         x = self.fc3(x)
-        return x
 
+        # Apply Softplus to the final output layer to enforce non-negative outputs
+        return self.softplus(x)
 
 class ConditionalNormalizingFlowModel(nn.Module):
     def __init__(self, input_dim, context_dim, hidden_dim, num_layers, device):
