@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import pandas as pd
 import argparse
-from model import AttentionDiffusionModel, linear_noise_schedule, sample_step
+from model import AttentionDiffusionModel, cosine_noise_schedule, sample_step
 
 hep.style.use(hep.style.ATLAS)
 
@@ -21,7 +21,7 @@ def parse_args():
 # Sampling function for the diffusion model
 def sample(model, condition, timesteps, data_dim, device):
     x = torch.randn(condition.shape[0], data_dim).to(device, dtype=torch.float32)
-    alpha_bar = torch.cumprod(1 - linear_noise_schedule(timesteps).to(device, dtype=torch.float32), dim=0)
+    alpha_bar = torch.cumprod(1 - cosine_noise_schedule(timesteps).to(device, dtype=torch.float32), dim=0)
     
     for t in reversed(range(timesteps)):
         x = sample_step(model, x, t, condition.to(device, dtype=torch.float32), alpha_bar)

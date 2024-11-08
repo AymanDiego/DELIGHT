@@ -5,9 +5,14 @@ from nflows.distributions.normal import StandardNormal
 from nflows.transforms import AffineCouplingTransform, RandomPermutation
 from nflows.transforms.base import CompositeTransform
 from nflows.nn.nets import ResidualNet
+import math
+import torch
 
-def linear_noise_schedule(timesteps, start=1e-4, end=2e-2):
-    return torch.linspace(start, end, timesteps)
+def cosine_noise_schedule(timesteps, s=0.008):
+    """Cosine noise schedule function."""
+    steps = torch.arange(timesteps + 1, dtype=torch.float32)
+    alpha_bar = torch.cos((steps / timesteps + s) / (1 + s) * math.pi / 2) ** 2
+    return alpha_bar[:-1] / alpha_bar[1:]  # Returns the noise ratio
 
 def sample_step_inference(model, x, t, condition, alpha_bar):
     noise_pred = model(x, t, condition)
@@ -72,10 +77,12 @@ class AttentionDiffusionModel(nn.Module):
 
         # Network layers
         self.attention = SelfAttention(data_dim + condition_dim)
-        self.fc1 = nn.Linear(data_dim + condition_dim, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, data_dim)
 
+        # Increased hidden dimension size and added an extra layer for more capacity
+        self.fc1 = nn.Linear(data_dim + condition_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 256)
+        self.fc4 = nn.Linear(256, data_dim)
 
         # Initialize Softplus to enforce positive outputs
         self.softplus = nn.Softplus()
@@ -90,7 +97,8 @@ class AttentionDiffusionModel(nn.Module):
         # Feedforward layers
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = torch.relu(self.fc3(x))
+        x = self.fc4(x)
 
         # Apply Softplus to the final output layer to enforce non-negative outputs
         return self.softplus(x)

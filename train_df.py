@@ -10,7 +10,7 @@ hep.style.use(hep.style.ATLAS)
 import pandas as pd
 import numpy as np
 import torch
-from model import AttentionDiffusionModel, linear_noise_schedule, diffusion_loss, sample_step
+from model import AttentionDiffusionModel, cosine_noise_schedule, diffusion_loss, sample_step
 
 # ArgumentParser to handle command-line arguments
 def parse_args():
@@ -207,11 +207,11 @@ if __name__ == "__main__":
     batch_size = 128
 
     # Create noise schedule and model
-    noise_schedule = linear_noise_schedule(timesteps).to(device)
+    noise_schedule = cosine_noise_schedule(timesteps).to(device)
     df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=device).to(device)
    
     # Save hyperparameters
-    save_diffusion_hyperparameters_to_csv(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, learning_rate=args.learning_rate, num_epochs=args.num_epochs, save_dir=args.model_dir)
+    save_diffusion_hyperparameters_to_csv(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, learning_rate=args.learning_rate, num_epochs=args.num_epochs, save_dir=save_dir)
 
     # Train the model
     train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=args.num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=args.learning_rate, timesteps=timesteps)
