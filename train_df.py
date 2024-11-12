@@ -10,7 +10,7 @@ hep.style.use(hep.style.ATLAS)
 import pandas as pd
 import numpy as np
 import torch
-from model import AttentionDiffusionModel, cosine_noise_schedule, diffusion_loss, sample_step
+from model import AttentionDiffusionModel, cosine_noise_schedule, diffusion_loss, sample_step, init_weights
 
 # ArgumentParser to handle command-line arguments
 def parse_args():
@@ -29,7 +29,7 @@ def parse_args():
     
     # Add argument for number of epochs and learning rate
     parser.add_argument('--num_epochs', type=int, default=19, help='Number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for optimizer')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer')
 
     # Add argument for the cutoff energy
     parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy value. Ignore events below this energy in eV.')
@@ -54,6 +54,11 @@ def setup_logger():
 
     return logger
 
+# Check for NaN or Inf values in input data
+def check_data_for_nan_inf(data):
+    if torch.isnan(data).any() or torch.isinf(data).any():
+        raise ValueError("NaN or Inf found in input data.")
+
 # Function to save hyperparameters to CSV for diffusion model
 def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, learning_rate, num_epochs, save_dir):
     hyperparams = {
@@ -67,7 +72,7 @@ def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, le
     df.to_csv(f"{save_dir}/diffusion_hyperparameters.csv", index=False)
 
 # Training the diffusion model
-def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, num_epochs, noise_schedule, batch_size=512, learning_rate=1e-3, timesteps=300):
+def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, num_epochs, noise_schedule, batch_size=512, learning_rate=1e-4, timesteps=300):
     optimizer = torch.optim.Adam(df_model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     
@@ -77,6 +82,12 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
     data_val = torch.tensor(data_val, dtype=torch.float32, device=df_model.device)
     context_val = torch.tensor(context_val, dtype=torch.float32, device=df_model.device)
     
+    # Check for NaN or Inf values in the training and validation data
+    check_data_for_nan_inf(data_train)
+    check_data_for_nan_inf(context_train)
+    check_data_for_nan_inf(data_val)
+    check_data_for_nan_inf(context_val)
+
     dataset_train = torch.utils.data.TensorDataset(data_train, context_train)
     dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     dataset_val = torch.utils.data.TensorDataset(data_val, context_val)
@@ -92,9 +103,27 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_train, desc=f"Training epoch {epoch}"):
             batch_data, batch_context = batch
             optimizer.zero_grad()
+
+            # Generate a random time step for each batch sample
+            t = torch.randint(0, timesteps, (batch_data.shape[0],)).to(df_model.device)
+        
+            # Forward pass and check for NaNs in model output
+            output = df_model(batch_data, t, batch_context)
+            if torch.isnan(output).any() or torch.isinf(output).any():
+                print(f"NaN or Inf detected in model output at epoch {epoch}")
+                raise ValueError("NaN or Inf detected in model output")
+
+            # Calculate loss
             loss = diffusion_loss(df_model, batch_data, batch_context, noise_schedule, timesteps)
+            
+            # Check for NaN in the calculated loss
+            if torch.isnan(loss) or torch.isinf(loss):
+                print("NaN encountered in training loss at epoch", epoch)
+                raise ValueError("NaN encountered in loss")
+
             total_loss_train += loss.item()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(df_model.parameters(), max_norm=1.0)  # Clip gradients to a max norm of 1.0
             optimizer.step()
 
         scheduler.step()
@@ -105,6 +134,12 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
             with torch.no_grad():
                 batch_data, batch_context = batch
                 loss_val = diffusion_loss(df_model, batch_data, batch_context, noise_schedule, timesteps)
+                
+                # Check for NaN in the validation loss
+                if torch.isnan(loss_val):
+                    print(f"NaN encountered in validation loss at epoch {epoch}")
+                    return  # Exit the training if NaNs are encountered
+
                 total_loss_val += loss_val.item()
         
         # Log and save losses
@@ -203,13 +238,14 @@ if __name__ == "__main__":
     # Model parameters
     data_dim = 4
     condition_dim = 1
-    timesteps = 100
+    timesteps = 1000
     batch_size = 128
 
     # Create noise schedule and model
     noise_schedule = cosine_noise_schedule(timesteps).to(device)
     df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=device).to(device)
-   
+    df_model.apply(init_weights)  # Apply weight initialization
+
     # Save hyperparameters
     save_diffusion_hyperparameters_to_csv(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, learning_rate=args.learning_rate, num_epochs=args.num_epochs, save_dir=save_dir)
 

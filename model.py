@@ -8,11 +8,14 @@ from nflows.nn.nets import ResidualNet
 import math
 import torch
 
-def cosine_noise_schedule(timesteps, s=0.008):
-    """Cosine noise schedule function."""
+def cosine_noise_schedule(timesteps, s=0.008, epsilon=1e-6):
+    """Cosine noise schedule function with stability enhancements."""
     steps = torch.arange(timesteps + 1, dtype=torch.float32)
     alpha_bar = torch.cos((steps / timesteps + s) / (1 + s) * math.pi / 2) ** 2
-    return alpha_bar[:-1] / alpha_bar[1:]  # Returns the noise ratio
+
+    # Add epsilon to prevent division issues
+    alpha_ratio = (alpha_bar[:-1] + epsilon) / (alpha_bar[1:] + epsilon)
+    return alpha_ratio
 
 def sample_step_inference(model, x, t, condition, alpha_bar):
     noise_pred = model(x, t, condition)
@@ -29,21 +32,55 @@ def sample_step(model, x, t, condition, alpha_bar):
     noise_pred = model(x, t, condition)
     return (x - noise_pred * (1 - alpha_bar[t]).sqrt()) / alpha_bar[t].sqrt()
 
-def diffusion_loss(model, x, condition, noise_schedule, timesteps):
-    # Choose a random timestep
+def diffusion_loss(model, x, condition, noise_schedule, timesteps, epsilon=1e-6, scale_factor=0.001):
+    # Ensure input data is finite
+    if torch.isnan(x).any() or torch.isinf(x).any():
+        raise ValueError("NaN or Inf detected in input x")
+    
+    # Scale down the noise schedule to reduce potential large changes in x_noisy
+    noise_schedule = noise_schedule * scale_factor
+
+    # Choose a random timestep and add noise
     t = torch.randint(0, timesteps, (x.shape[0],)).to(x.device)
     noise = torch.randn_like(x).to(x.device)
-    alpha_bar = torch.cumprod(1 - noise_schedule, dim=0)
+    alpha_bar = torch.cumprod(1 - noise_schedule + epsilon, dim=0)  # Add epsilon for stability
 
-    # Ensure alpha_bar[t] has an extra dimension to match x and noise
+    # Ensure alpha_bar[t] has an extra dimension to match x and noise and clamp it
     alpha_bar_t = alpha_bar[t].unsqueeze(-1)  # Shape: (batch_size, 1)
+    alpha_bar_t = torch.clamp(alpha_bar_t, min=1e-4, max=1)  # Prevent very small or extreme values
 
-    # Forward diffuse x to add noise
-    x_noisy = x * alpha_bar_t.sqrt() + noise * (1 - alpha_bar_t).sqrt()
+    # Forward diffuse x to add noise with epsilon
+    x_noisy = x * (alpha_bar_t + epsilon).sqrt() + noise * ((1 - alpha_bar_t) + epsilon).sqrt()
 
-    # Calculate model prediction and loss
+    # Debugging: Clamp x_noisy to a safe range to prevent extreme values
+    x_noisy = torch.clamp(x_noisy, -1e6, 1e6)
+
+
+    # Log details if NaN or Inf are detected in x_noisy
+    if torch.isnan(x_noisy).any() or torch.isinf(x_noisy).any():
+        print("NaNs/Infs detected in x_noisy.")
+        print("alpha_bar_t:", alpha_bar_t)
+        print("x values:", x)
+        print("x_noisy values:", x_noisy)
+        raise ValueError("NaN or Inf detected in x_noisy after clamping.")
+
     noise_pred = model(x_noisy, t, condition)
-    return ((noise - noise_pred) ** 2).mean()
+
+    # Check for NaN or Inf in noise_pred before calculating the loss
+    if torch.isnan(noise_pred).any() or torch.isinf(noise_pred).any():
+        print("NaNs/Infs detected in model output (noise_pred).")
+        print("noise_pred values:", noise_pred)
+        raise ValueError("NaN or Inf detected in model output.")
+
+    loss = ((noise - noise_pred) ** 2).mean()
+
+    return loss
+
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        nn.init.xavier_uniform_(m.weight)  # Xavier initialization for weights
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)  # Initialize bias to 0
 
 class SelfAttention(nn.Module):
     def __init__(self, dim):
@@ -68,6 +105,7 @@ class SelfAttention(nn.Module):
 
 
 class AttentionDiffusionModel(nn.Module):
+
     def __init__(self, data_dim, condition_dim, timesteps, device):
         super(AttentionDiffusionModel, self).__init__()
         self.timesteps = timesteps
