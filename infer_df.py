@@ -22,9 +22,14 @@ def parse_args():
 def sample(model, condition, timesteps, data_dim, device):
     x = torch.randn(condition.shape[0], data_dim).to(device, dtype=torch.float32)
     alpha_bar = torch.cumprod(1 - cosine_noise_schedule(timesteps).to(device, dtype=torch.float32), dim=0)
-    
+
     for t in reversed(range(timesteps)):
-        x = sample_step(model, x, t, condition.to(device, dtype=torch.float32), alpha_bar)
+        try:
+            x = sample_step(model, x, t, condition.to(device, dtype=torch.float32), alpha_bar)
+        except ValueError as e:
+            print(f"Sampling stopped due to instability at timestep {t}")
+            return None  # Return None if instability occurs
+
     return x
 
 if __name__ == "__main__":
@@ -72,6 +77,11 @@ if __name__ == "__main__":
 
         with torch.no_grad():
             samples = sample(df_model, energy, timesteps, data_dim, device)
+        
+        # Check for NaNs or Infs in samples
+        if torch.isnan(samples).any() or torch.isinf(samples).any():
+            print("NaNs or Infs detected in samples. Skipping plotting for this sample.")
+            continue  # Skip plotting this sample if it contains NaN or Inf values
 
         # Plot and save the histograms for different channels
         fig, ax = plt.subplots(figsize=(7, 6))

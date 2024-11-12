@@ -27,10 +27,27 @@ def sample_step_inference(model, x, t, condition, alpha_bar):
     #x_new = torch.clamp(x_new, min=-1e2, max=1e2)  # Adjust these bounds as needed
     return x_new
 
-def sample_step(model, x, t, condition, alpha_bar):
+def sample_step(model, x, t, condition, alpha_bar, epsilon=1e-5):
+    # Alpha bar values for stability
+    alpha_bar_t = alpha_bar[t].unsqueeze(-1)  # Shape: (batch_size, 1)
 
+    # Model prediction and diagnostics
     noise_pred = model(x, t, condition)
-    return (x - noise_pred * (1 - alpha_bar[t]).sqrt()) / alpha_bar[t].sqrt()
+    if torch.isnan(noise_pred).any() or torch.isinf(noise_pred).any():
+        print("NaN or Inf detected in noise_pred at step:", t)
+        print("Noise_pred values:", noise_pred)
+        raise ValueError("NaN or Inf in model prediction (noise_pred)")
+
+    # Diffuse step computation with enhanced stability
+    x_new = (x - noise_pred * torch.sqrt(torch.clamp(1 - alpha_bar_t, min=epsilon))) / torch.sqrt(torch.clamp(alpha_bar_t, min=epsilon))
+    x_new = torch.clamp(x_new, min=-1e6, max=1e6)  # Prevent extreme values in x_new
+
+    if torch.isnan(x_new).any() or torch.isinf(x_new).any():
+        print("NaN or Inf detected in x_new at step:", t)
+        print("x_new values:", x_new)
+        raise ValueError("NaN or Inf in x_new during sampling")
+
+    return x_new
 
 def diffusion_loss(model, x, condition, noise_schedule, timesteps, epsilon=1e-6, scale_factor=0.001):
     # Ensure input data is finite
