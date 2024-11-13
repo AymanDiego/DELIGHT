@@ -15,7 +15,7 @@ def parse_args():
 
     # Add argument for generated plots
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
-    parser.add_argument('--epoch_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
+    parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
 
     return parser.parse_args()
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     args = parse_args()  # Parse command-line arguments
 
     # Base directory
-    base_dir = "/web/aratey/public_html/delight/nf/models_DM/"
+    base_dir = "/web/aratey/public_html/delight/nf/models_DM/DM_old"
 
     # Append loss_dir if provided
     if args.loss_dir:
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     diffusion_model = DiffusionModel(input_dim=input_dim, num_timesteps=num_timesteps, device=device).to(device)
 
     # Load the checkpoint. Ensure the key matches the saved model during training.
-    checkpoint = torch.load(f'models_DM/{args.epoch_dir}/dm_epoch_300.pt', map_location=device)
+    checkpoint = torch.load(f'{args.model_dir}dm_epoch_300.pt', map_location=device)
     diffusion_model.load_state_dict(checkpoint)  # Match the state_dict key to 'model'
 
     # Set model to evaluation mode

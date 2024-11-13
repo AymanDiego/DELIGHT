@@ -168,35 +168,27 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
     plt.savefig(f"{save_dir}/loss.png", bbox_inches='tight', dpi=300)
     plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
 
-# Concatenates files and applies cutoff for loading data (only highest 3 energies)
-def concat_files(filelist, cutoff, top_n=3):
-    energy_per_file = []
-
-    # Calculate total energy for each file and store in a list
-    for f in filelist:
-        data = np.load(f)[:, :4]
-        energy = np.sum(data, axis=1).sum()  # Sum over all entries in the file
-        energy_per_file.append((f, energy))
-    
-    # Sort files by total energy and select top_n files
-    sorted_files = sorted(energy_per_file, key=lambda x: x[1], reverse=True)[:top_n]
-    selected_files = [f[0] for f in sorted_files]
-
-    # Load and concatenate only the selected files
+# Concatenates files and applies cutoff for loading data
+def concat_files(filelist, cutoff):
     all_data = None
-    for f in tqdm.tqdm(selected_files, desc="Loading and processing top energy files"):
+    for f in tqdm.tqdm(filelist, desc="Loading and processing data"):
+        # Load file and retrieve all four channels
         data = np.load(f)[:, :4]
+
+        # Calculate energy as the sum of all channels
         energy = np.sum(data, axis=1).reshape(-1, 1)
-        
+
+        # Filter out entries below the cutoff energy
         valid_entries = energy >= cutoff
         data = data[valid_entries.ravel()]
         energy = energy[valid_entries.ravel()]
-        
+
+        # Concatenate data if not empty
         if all_data is None:
             all_data = np.concatenate((data, energy), axis=1)
         else:
             all_data = np.concatenate((all_data, np.concatenate((data, energy), axis=1)), axis=0)
-    
+
     return all_data
 
 if __name__ == "__main__":
@@ -234,8 +226,8 @@ if __name__ == "__main__":
     # Shuffle and load files
     random.seed(123)
     random.shuffle(files_train)
-    data_train = concat_files(files_train, cutoff_e, top_n=3)
-    data_val = concat_files(files_val, cutoff_e, top_n=3)
+    data_train = concat_files(files_train, cutoff_e)
+    data_val = concat_files(files_val, cutoff_e)
     
     # Separate data and context
     data_train_4d = data_train[:, :4]

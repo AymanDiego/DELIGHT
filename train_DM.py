@@ -16,7 +16,7 @@ hep.style.use(hep.style.ATLAS)
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Diffusion Model")
     parser.add_argument('--device', type=str, default='cuda:0', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
-    parser.add_argument('--model_dir', type=str, default='models_DM/', help='Directory to save the model checkpoints')
+    parser.add_argument('--model_dir', type=str, default='models_DM/DM_old/', help='Directory to save the model checkpoints')
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--file_pattern', type=str, default='all', help='Specify file pattern: "all" for all files or a specific pattern like NR_final_200_*.npy')
     parser.add_argument('--num_timesteps', type=int, default=1000, help="Number of diffusion timesteps")
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     logger = setup_logger()
 
     # Base directory
-    base_dir = "/web/aratey/public_html/delight/nf/models_DM/"
+    base_dir = "/web/aratey/public_html/delight/nf/models_DM/DM_old/"
 
     # Append loss_dir if provided
     if args.loss_dir:

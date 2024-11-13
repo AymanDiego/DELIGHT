@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
     parser.add_argument('--normalize_energies', action='store_true', help='Flag to re-transform normalized energies to original scale')
     parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
+    parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy threshold in eV for generating plots')
     return parser.parse_args()
 
 # Function to load normalization parameters
@@ -68,6 +69,9 @@ if __name__ == "__main__":
     energies = np.geomspace(10, 1e6, 500)
 
     for i, e in enumerate(energies):
+        if e < args.cutoff_e:
+            print(f"Skipping energy {e} eV as it is below cutoff {args.cutoff_e} eV.")
+            continue
         if i % 50 != 0:
             continue
 
@@ -92,11 +96,6 @@ if __name__ == "__main__":
         if args.normalize_energies:
             gen = gen * stds + means  # Reverse transformation: (normalized value * std) + mean
 
-        # Loop through each channel (0 to 3) and print the values of gen[:, *]
-        for channel in range(4):
-            print(f"Values for channel {channel}:")
-            print(gen[:, channel])
-
         # Plot and save the histograms for different channels
         fig, ax = plt.subplots(figsize=(7, 6))
         plt.hist(gen[:, 0], histtype='step', bins=15, label='phonon channel', color='indianred')
@@ -116,4 +115,3 @@ if __name__ == "__main__":
 
         # Save the generated plots to the specified directory
         plt.savefig(f"{save_dir}/gen_{i}.png", bbox_inches='tight', dpi=300)
-
