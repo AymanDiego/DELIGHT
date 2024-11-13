@@ -22,6 +22,7 @@ def parse_args():
     parser.add_argument('--num_timesteps', type=int, default=1000, help="Number of diffusion timesteps")
     parser.add_argument('--noise_magnitude', type=float, default=0.1, help="Magnitude of noise to apply to energy values")
     parser.add_argument('--energy_threshold', type=float, default=50.0, help="Threshold below which noise is added")
+    parser.add_argument('--normalize', action='store_true', help="Flag to apply normalization to the energy channels")  
     return parser.parse_args()
 
 def setup_logger():
@@ -41,18 +42,30 @@ def apply_noise(data, energy_column, noise_magnitude, energy_threshold):
     return data
 
 def concat_files(filelist, cutoff):
-    e_array = np.geomspace(10, 1e6, 500)
+    """
+    Concatenates files and calculates energy by summing across all channels.
+    Ignores interactions with total energy below the specified cutoff.
+    """
     all_data = None
-    for f in tqdm.tqdm(filelist, desc="Loading data into array"):
-        idx = int(f.split("NR_final_")[-1].split("_")[0])
-        if e_array[idx] < cutoff:
-            continue
+    for f in tqdm.tqdm(filelist, desc="Loading and processing data"):
+        # Load file and retrieve all four channels
+        data = np.load(f)[:, :4]
+
+        # Calculate energy as the sum of all channels
+        energy = np.sum(data, axis=1).reshape(-1, 1)
+
+        # Filter out entries below the cutoff energy
+        valid_entries = energy >= cutoff
+        data = data[valid_entries.ravel()]
+        energy = energy[valid_entries.ravel()]
+
+        # Concatenate data if not empty
         if all_data is None:
-            all_data = np.load(f)[:, :4]
+            all_data = np.concatenate((data, energy), axis=1)
         else:
-            all_data = np.concatenate((all_data, np.load(f)[:, :4]))
-    energy = np.sum(all_data, axis=1).reshape(-1, 1)
-    return np.concatenate((all_data, energy), axis=1)
+            all_data = np.concatenate((all_data, np.concatenate((data, energy), axis=1)), axis=0)
+
+    return all_data
 
 # Function to save hyperparameters to CSV
 def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, energy_threshold, model_dir):
@@ -167,15 +180,24 @@ if __name__ == "__main__":
     logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
 
     if args.file_pattern == 'all':
-        files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
-        files_val = glob.glob("/ceph/aratey/delight/ml/nf/data/val/*.npy")
+        files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
+        files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*.npy")
     else:
-        files_train = glob.glob(f"/ceph/aratey/delight/ml/nf/data/train/{args.file_pattern}")
-        files_val = glob.glob(f"/ceph/aratey/delight/ml/nf/data/val/{args.file_pattern}")
+        files_train = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/train/{args.file_pattern}")
+        files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
 
     random.shuffle(files_train)
     data_train = concat_files(files_train, cutoff_e)
     data_val = concat_files(files_val, cutoff_e)
+
+    # Optionally normalize energies
+    if args.normalize:
+        logger.info("Normalizing energies...")
+        data_train[:, :4], means_train, stds_train = normalize_energies(data_train[:, :4])
+        data_val[:, :4], means_val, stds_val = normalize_energies(data_val[:, :4])
+        save_normalization_params(means_train, stds_train, args.model_dir)
+    else:
+        logger.info("Skipping energy normalization...")
 
     diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device).to(args.device)
 

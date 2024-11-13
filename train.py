@@ -215,8 +215,6 @@ def concat_files(filelist, cutoff):
 
         # Calculate energy as the sum of all channels
         energy = np.sum(data, axis=1).reshape(-1, 1)
-        print(f)
-        print(energy[0])
 
         # Filter out entries below the cutoff energy
         valid_entries = energy >= cutoff

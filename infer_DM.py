@@ -16,8 +16,15 @@ def parse_args():
     # Add argument for generated plots
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
-
+    parser.add_argument('--normalize', action='store_true', help='Revert normalization on generated samples if the model was trained with normalization')
     return parser.parse_args()
+
+# Function to load normalization parameters
+def load_normalization_params(model_dir):
+    params_df = pd.read_csv(f'{model_dir}/normalization_params.csv')
+    means = params_df["means"].values
+    stds = params_df["stds"].values
+    return means, stds
 
 # Function to perform reverse diffusion sampling
 def reverse_diffusion(diffusion_model, num_samples, context, num_timesteps, device):
@@ -61,6 +68,10 @@ if __name__ == "__main__":
 
     # Set model to evaluation mode
     diffusion_model.eval()
+
+    # Load normalization parameters if denormalization is needed
+    if args.normalize:
+        means, stds = load_normalization_params(args.model_dir)
 
     # Example energy values for which you want to generate samples
     energies = np.geomspace(10, 1e6, 500)
