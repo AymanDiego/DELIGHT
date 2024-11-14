@@ -17,6 +17,7 @@ def parse_args():
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
     parser.add_argument('--normalize', action='store_true', help='Revert normalization on generated samples if the model was trained with normalization')
+    parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
     return parser.parse_args()
 
 # Function to load normalization parameters
@@ -57,7 +58,7 @@ if __name__ == "__main__":
     input_dim = 4  # Make sure this matches the model's trained input dimension
     num_timesteps = 1000
     num_samples = 1000
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
     # Load your trained diffusion model
     diffusion_model = DiffusionModel(input_dim=input_dim, num_timesteps=num_timesteps, device=device).to(device)

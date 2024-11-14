@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument('--noise_magnitude', type=float, default=0.1, help="Magnitude of noise to apply to energy values")
     parser.add_argument('--energy_threshold', type=float, default=50.0, help="Threshold below which noise is added")
     parser.add_argument('--normalize', action='store_true', help="Flag to apply normalization to the energy channels")  
+    parser.add_argument('--cutoff_e', type=float, default=0.0, help="Energy cutoff value to ignore events below this threshold")
     return parser.parse_args()
 
 def setup_logger():
@@ -68,7 +69,7 @@ def concat_files(filelist, cutoff):
     return all_data
 
 # Function to save hyperparameters to CSV
-def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, energy_threshold, model_dir):
+def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, energy_threshold, model_dir, cutoff_e):
     hyperparams = {
         "input_dim": input_dim,
         "num_timesteps": num_timesteps,
@@ -76,7 +77,8 @@ def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epo
         "num_epochs": num_epochs,
         "weight_decay": weight_decay,
         "noise_magnitude": noise_magnitude,
-        "energy_threshold": energy_threshold
+        "energy_threshold": energy_threshold,
+        "cutoff_e": cutoff_e
     }
     df = pd.DataFrame([hyperparams])
     df.to_csv(f"{save_dir}/hyperparameters.csv", index=False)
@@ -176,8 +178,7 @@ if __name__ == "__main__":
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    cutoff_e = 0.0
-    logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
+    logger.info(f'Load data for events with energy larger than {args.cutoff_e} eV.')
 
     if args.file_pattern == 'all':
         files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
@@ -187,8 +188,8 @@ if __name__ == "__main__":
         files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
 
     random.shuffle(files_train)
-    data_train = concat_files(files_train, cutoff_e)
-    data_val = concat_files(files_val, cutoff_e)
+    data_train = concat_files(files_train, args.cutoff_e)
+    data_val = concat_files(files_val, args.cutoff_e)
 
     # Optionally normalize energies
     if args.normalize:
@@ -204,7 +205,7 @@ if __name__ == "__main__":
     # Save the hyperparameters before training starts
     save_hyperparameters_to_csv(input_dim=4, num_timesteps=args.num_timesteps, learning_rate=1e-4,
                                 num_epochs=301, weight_decay=1e-5, noise_magnitude=args.noise_magnitude,
-                                energy_threshold=args.energy_threshold, model_dir=args.model_dir)
+                                energy_threshold=args.energy_threshold, model_dir=args.model_dir, cutoff_e=args.cutoff_e)
 
     # Train the model
     train_diffusion_model(diffusion_model, data_train, data_val, num_epochs=301, model_dir=args.model_dir, num_timesteps=args.num_timesteps, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
