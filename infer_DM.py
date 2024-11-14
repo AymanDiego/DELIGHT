@@ -3,76 +3,35 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
 import glob
-import os  # This is needed for the path operations
-import argparse  # This is the missing import
 from model_DM import DiffusionModel
 
 hep.style.use(hep.style.ATLAS)
-
-# ArgumentParser to handle command-line arguments
-def parse_args():
-    parser = argparse.ArgumentParser(description="Infer Diffusion Model")
-
-    # Add argument for generated plots
-    parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
-    parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
-    parser.add_argument('--normalize', action='store_true', help='Revert normalization on generated samples if the model was trained with normalization')
-    parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
-    return parser.parse_args()
-
-# Function to load normalization parameters
-def load_normalization_params(model_dir):
-    params_df = pd.read_csv(f'{model_dir}/normalization_params.csv')
-    means = params_df["means"].values
-    stds = params_df["stds"].values
-    return means, stds
 
 # Function to perform reverse diffusion sampling
 def reverse_diffusion(diffusion_model, num_samples, context, num_timesteps, device):
     # Start from noise
     x_t = torch.randn(num_samples, diffusion_model.input_dim, device=device)
-
+    
     for t in reversed(range(num_timesteps)):
         t_tensor = torch.tensor([t], device=device)
         x_t = diffusion_model.p_sample(x_t, t_tensor, context)  # Use reverse diffusion
-
+    
     return x_t
 
 if __name__ == "__main__":
-    args = parse_args()  # Parse command-line arguments
-
-    # Base directory
-    base_dir = "/web/aratey/public_html/delight/nf/models_DM/DM_old"
-
-    # Append loss_dir if provided
-    if args.loss_dir:
-        save_dir = os.path.join(base_dir, args.loss_dir)
-    else:
-        save_dir = base_dir
-
-    # Ensure the directory exists
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-
     # Set up model parameters
-    input_dim = 4  # Make sure this matches the model's trained input dimension
+    input_dim = 4
     num_timesteps = 1000
-    num_samples = 1000
-    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+    num_samples = 10000
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Load your trained diffusion model
     diffusion_model = DiffusionModel(input_dim=input_dim, num_timesteps=num_timesteps, device=device).to(device)
-
-    # Load the checkpoint. Ensure the key matches the saved model during training.
-    checkpoint = torch.load(f'{args.model_dir}dm_epoch_300.pt', map_location=device)
-    diffusion_model.load_state_dict(checkpoint)  # Match the state_dict key to 'model'
+    checkpoint = torch.load('models_DM/epoch-300.pt', map_location=device)
+    diffusion_model.load_state_dict(checkpoint['model_DM'])
 
     # Set model to evaluation mode
     diffusion_model.eval()
-
-    # Load normalization parameters if denormalization is needed
-    if args.normalize:
-        means, stds = load_normalization_params(args.model_dir)
 
     # Example energy values for which you want to generate samples
     energies = np.geomspace(10, 1e6, 500)
@@ -86,16 +45,13 @@ if __name__ == "__main__":
         for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
             sim = None
             if sim is None:
-                sim = np.load(f)[:, :4]  # Ensure it loads only the first 4 dimensions (features)
+                sim = np.load(f)[:, :4]
             else:
                 sim = np.concatenate((sim, np.load(f)[:, :4]))
 
         # Generate samples using reverse diffusion
         print(f"Generating samples for {e} eV (index {i})")
-
-        # Create context tensor for the given energy, matching the context size from training
-        fixed_value_5th_dim = torch.tensor([[float(e)]], device=device).expand(num_samples, 1)
-
+        fixed_value_5th_dim = torch.tensor([[float(e)]], device=device)
         generated_samples = reverse_diffusion(diffusion_model, num_samples=num_samples, context=fixed_value_5th_dim, num_timesteps=num_timesteps, device=device)
         generated_samples = generated_samples.cpu().detach().numpy()
 
@@ -115,5 +71,5 @@ if __name__ == "__main__":
         ax.set_ylabel("Arbitrary units")
         plt.legend(fontsize=17)
         plt.tight_layout()
-        plt.savefig(f"{save_dir}/gen_{i}_DM.png", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/web/aratey/public_html/delight/nf/models_DM/gen_{i}_DM.png", bbox_inches='tight', dpi=300)
 
