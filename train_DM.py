@@ -27,8 +27,8 @@ def parse_args():
     parser.add_argument('--file_pattern', type=str, default='all', help='Specify file pattern: "all" for all files or a specific pattern like NR_final_200_*.npy')
     
     # Add argument for the noise magnitude and energy threshold for noise application
-    parser.add_argument('--noise_magnitude', type=float, default=1e-3, help='Magnitude of the noise to apply to small energies')
-    parser.add_argument('--energy_threshold', type=float, default=1e3, help='Energy threshold below which noise is applied')
+    parser.add_argument('--noise_magnitude', type=float, default=0.0, help='Magnitude of the noise to apply to small energies')
+    parser.add_argument('--energy_threshold', type=float, default=0.0, help='Energy threshold below which noise is applied')
 
     return parser.parse_args()
 
