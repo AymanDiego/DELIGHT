@@ -20,15 +20,17 @@ def reverse_diffusion(diffusion_model, num_samples, context, num_timesteps, devi
 
 if __name__ == "__main__":
     # Set up model parameters
-    input_dim = 4
+    input_dim = 4  # Make sure this matches the model's trained input dimension
     num_timesteps = 1000
     num_samples = 10000
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Load your trained diffusion model
     diffusion_model = DiffusionModel(input_dim=input_dim, num_timesteps=num_timesteps, device=device).to(device)
-    checkpoint = torch.load('models_DM/epoch-300.pt', map_location=device)
-    diffusion_model.load_state_dict(checkpoint['model_DM'])
+    
+    # Load the checkpoint. Ensure the key matches the saved model during training.
+    checkpoint = torch.load('models_DM/DM_old/run_14/dm_epoch_300.pt', map_location=device)    
+    diffusion_model.load_state_dict(checkpoint)  # Match the state_dict key to 'model'
 
     # Set model to evaluation mode
     diffusion_model.eval()
@@ -45,13 +47,16 @@ if __name__ == "__main__":
         for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
             sim = None
             if sim is None:
-                sim = np.load(f)[:, :4]
+                sim = np.load(f)[:, :4]  # Ensure it loads only the first 4 dimensions (features)
             else:
                 sim = np.concatenate((sim, np.load(f)[:, :4]))
 
         # Generate samples using reverse diffusion
         print(f"Generating samples for {e} eV (index {i})")
-        fixed_value_5th_dim = torch.tensor([[float(e)]], device=device)
+        
+        # Create context tensor for the given energy, matching the context size from training
+        fixed_value_5th_dim = torch.tensor([[float(e)]], device=device).expand(num_samples, 1)
+
         generated_samples = reverse_diffusion(diffusion_model, num_samples=num_samples, context=fixed_value_5th_dim, num_timesteps=num_timesteps, device=device)
         generated_samples = generated_samples.cpu().detach().numpy()
 
@@ -71,5 +76,4 @@ if __name__ == "__main__":
         ax.set_ylabel("Arbitrary units")
         plt.legend(fontsize=17)
         plt.tight_layout()
-        plt.savefig(f"/web/aratey/public_html/delight/nf/models_DM/gen_{i}_DM.png", bbox_inches='tight', dpi=300)
-
+        plt.savefig(f"/web/aratey/public_html/delight/nf/models_DM/DM_old/run_14/gen_{i}_DM.png", bbox_inches='tight', dpi=300)
