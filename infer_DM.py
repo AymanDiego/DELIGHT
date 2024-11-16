@@ -23,13 +23,13 @@ if __name__ == "__main__":
     input_dim = 4  # Make sure this matches the model's trained input dimension
     num_timesteps = 1000
     num_samples = 10000
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
 
     # Load your trained diffusion model
     diffusion_model = DiffusionModel(input_dim=input_dim, num_timesteps=num_timesteps, device=device).to(device)
     
     # Load the checkpoint. Ensure the key matches the saved model during training.
-    checkpoint = torch.load('models_DM/DM_old/run_14/dm_epoch_300.pt', map_location=device)    
+    checkpoint = torch.load('models_DM/DM_old/run_15/dm_epoch_300.pt', map_location=device)    
     diffusion_model.load_state_dict(checkpoint)  # Match the state_dict key to 'model'
 
     # Set model to evaluation mode
@@ -76,4 +76,4 @@ if __name__ == "__main__":
         ax.set_ylabel("Arbitrary units")
         plt.legend(fontsize=17)
         plt.tight_layout()
-        plt.savefig(f"/web/aratey/public_html/delight/nf/models_DM/DM_old/run_14/gen_{i}_DM.png", bbox_inches='tight', dpi=300)
+        plt.savefig(f"/web/aratey/public_html/delight/nf/models_DM/DM_old/run_15/gen_{i}_DM.png", bbox_inches='tight', dpi=300)
