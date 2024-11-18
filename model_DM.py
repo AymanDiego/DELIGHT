@@ -16,6 +16,7 @@ class DiffusionModel(nn.Module):
             nn.Linear(128, 128),
             nn.ReLU(),
             nn.Linear(128, input_dim)  # Output matches the input data without context (4 dims)
+            nn.Softplus()  # Enforce non-negative outputs
         )
 
     def q_sample(self, x_start, t, noise=None):
