@@ -1,23 +1,34 @@
 import torch
 import torch.nn as nn
+import math
+
+# Cosine noise schedule function
+def cosine_noise_schedule(timesteps, s=0.008):
+    """Cosine noise schedule for diffusion models."""
+    steps = torch.linspace(0, timesteps, timesteps + 1, dtype=torch.float32)
+    alpha_bar = torch.cos(((steps / timesteps) + s) / (1 + s) * math.pi / 2) ** 2
+    return alpha_bar[:-1] / alpha_bar[1:]  # Return schedule ratios
 
 class DiffusionModel(nn.Module):
-    def __init__(self, input_dim, num_timesteps, device):
+    def __init__(self, input_dim, num_timesteps, device, noise_scale=0.001):
         super(DiffusionModel, self).__init__()
         self.input_dim = input_dim
         self.num_timesteps = num_timesteps
         self.device = device
+        self.noise_scale = noise_scale  # Store noise_scale as an instance variable
 
         # Define the architecture for the network
-        # Match the input_dim+1 to account for the context/energy dimension
         self.network = nn.Sequential(
             nn.Linear(input_dim + 1, 128),  # Add context (energy) into the input
             nn.ReLU(),
             nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(128, input_dim)  # Output matches the input data without context (4 dims)
+            nn.Linear(128, input_dim),  # Output matches the input data without context (4 dims)
             nn.Softplus()  # Enforce non-negative outputs
         )
+
+        # Precompute the cosine noise schedule
+        self.noise_schedule = cosine_noise_schedule(num_timesteps) * noise_scale
 
     def q_sample(self, x_start, t, noise=None):
         if noise is None:
@@ -29,7 +40,7 @@ class DiffusionModel(nn.Module):
         noise_pred = self.network(torch.cat((x_t, context), dim=1))  # Context added here
         return x_t - noise_pred
 
-    def compute_loss(self, x, context):
+    def compute_loss(self, x, context, noise_schedule):
         # Similar to how Normalizing Flows handle inputs, split data and context
         noise = torch.randn_like(x[:, :self.input_dim])  # Ignore the context in noise generation
         t = torch.randint(0, self.num_timesteps, (x.size(0),), device=x.device).float() / self.num_timesteps
