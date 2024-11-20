@@ -200,11 +200,11 @@ if __name__ == "__main__":
     logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
 
     if args.file_pattern == 'all':
-        files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
-        files_val = glob.glob("/ceph/aratey/delight/ml/nf/data/val/*.npy")
+        files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
+        files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*.npy")
     else:
-        files_train = glob.glob(f"/ceph/aratey/delight/ml/nf/data/train/{args.file_pattern}")
-        files_val = glob.glob(f"/ceph/aratey/delight/ml/nf/data/val/{args.file_pattern}")
+        files_train = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/train/{args.file_pattern}")
+        files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
 
     random.shuffle(files_train)
     data_train = concat_files(files_train, args.cutoff_e)
