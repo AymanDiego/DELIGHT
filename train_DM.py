@@ -29,14 +29,14 @@ def parse_args():
     
     # Diffusion model parameters
     parser.add_argument('--num_timesteps', type=int, default=1000, help="Number of diffusion timesteps")
-    parser.add_argument('--noise_magnitude', type=float, default=0.1, help="Magnitude of noise to apply to energy values")
+    parser.add_argument('--noise_magnitude', type=float, default=0.0, help="Magnitude of noise to apply to energy values")
     parser.add_argument('--noise_scale', type=float, default=0.001, help="Scaling factor for the cosine noise schedule")
-    parser.add_argument('--energy_threshold', type=float, default=50.0, help="Threshold below which noise is added")
+    parser.add_argument('--energy_threshold', type=float, default=0.0, help="Threshold below which noise is added")
     
     # Training parameters
     parser.add_argument('--num_epochs', type=int, default=100, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=512, help='Batch size for training')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for optimizer')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
 
     # Data cutoff
@@ -200,11 +200,11 @@ if __name__ == "__main__":
     logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
 
     if args.file_pattern == 'all':
-        files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
-        files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*.npy")
+        files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
+        files_val = glob.glob("/ceph/aratey/delight/ml/nf/data/val/*.npy")
     else:
-        files_train = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/train/{args.file_pattern}")
-        files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
+        files_train = glob.glob(f"/ceph/aratey/delight/ml/nf/data/train/{args.file_pattern}")
+        files_val = glob.glob(f"/ceph/aratey/delight/ml/nf/data/val/{args.file_pattern}")
 
     random.shuffle(files_train)
     data_train = concat_files(files_train, args.cutoff_e)
