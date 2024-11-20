@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 import mplhep as hep
-from model_DM import DiffusionModel, cosine_noise_schedule  # Import updated model and cosine schedule
+from model_DM import DiffusionModel, cosine_noise_schedule, linear_noise_schedule, constant_noise_schedule 
 
 hep.style.use(hep.style.ATLAS)
 
@@ -41,7 +41,11 @@ def parse_args():
 
     # Data cutoff
     parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy value. Ignore events below this energy in eV.')
-    
+   
+    # Add argument for noise schedule
+    parser.add_argument('--noise_schedule', type=str, choices=['cosine', 'linear', 'constant', 'none'], default='none',
+                        help="Type of noise schedule to use: 'cosine', 'linear', 'constant', or 'none'")
+
     return parser.parse_args()
 
 def setup_logger():
@@ -61,7 +65,7 @@ def apply_noise(data, energy_column, noise_magnitude, energy_threshold):
     return data
 
 # Function to save hyperparameters to CSV
-def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, noise_scale, energy_threshold, cutoff_e, save_dir):
+def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, noise_scale, energy_threshold, cutoff_e, noise_schedule_type, save_dir):
     """
     Saves the hyperparameters used for training the diffusion model to a CSV file in save_dir.
     """
@@ -78,6 +82,7 @@ def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epo
         "noise_scale": noise_scale,
         "energy_threshold": energy_threshold,
         "cutoff_energy": cutoff_e,
+        "noise_schedule_type": noise_schedule_type,
     }
 
     df = pd.DataFrame([hyperparams])
@@ -221,12 +226,26 @@ if __name__ == "__main__":
         noise_scale=args.noise_scale,
         energy_threshold=args.energy_threshold,
         cutoff_e=args.cutoff_e,
-        save_dir=save_dir
+        save_dir=save_dir,
+        noise_schedule_type=args.noise_schedule
     )
 
-    # Precompute noise schedule
-    noise_schedule = cosine_noise_schedule(args.num_timesteps) * args.noise_scale
+    # Precompute noise schedule based on user input
+    if args.noise_schedule == 'cosine':
+        noise_schedule = cosine_noise_schedule(args.num_timesteps) * args.noise_scale
+    elif args.noise_schedule == 'linear':
+        noise_schedule = linear_noise_schedule(args.num_timesteps) * args.noise_scale
+    elif args.noise_schedule == 'constant':
+        noise_schedule = constant_noise_schedule(args.num_timesteps, scale=args.noise_scale)
+    elif args.noise_schedule == 'none':
+        noise_schedule = None  # No noise schedule, skip adding noise
+    else:
+        raise ValueError(f"Unknown noise schedule: {args.noise_schedule}")
 
-    diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device, noise_scale=args.noise_magnitude).to(args.device)
+    # Move the noise schedule tensor to the correct device if not None
+    if noise_schedule is not None:
+        noise_schedule = noise_schedule.to(args.device)
+
+    diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device, noise_schedule=noise_schedule).to(args.device)
     train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir, args.model_dir, noise_schedule)
 
