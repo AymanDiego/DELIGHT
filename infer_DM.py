@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
 import argparse
-from model_DM import DiffusionModel
+from model_DM import DiffusionModel, cosine_noise_schedule, linear_noise_schedule, constant_noise_schedule
 
 hep.style.use(hep.style.ATLAS)
 
@@ -15,9 +15,9 @@ def parse_args():
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load trained model checkpoint')
     parser.add_argument('--device', type=str, default='cuda:0', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
     parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy threshold in eV for generating plots')
+    parser.add_argument('--noise_schedule', type=str, default='cosine', choices=['cosine', 'linear', 'constant', 'none'], help='Specify the noise schedule used during training (cosine, linear, constant, none)')
     return parser.parse_args()
 
-# Function to perform reverse diffusion sampling
 def reverse_diffusion(diffusion_model, num_samples, context, num_timesteps, device):
     x_t = torch.randn(num_samples, diffusion_model.input_dim, device=device)  # Start from noise
     for t in reversed(range(num_timesteps)):
@@ -26,7 +26,7 @@ def reverse_diffusion(diffusion_model, num_samples, context, num_timesteps, devi
     return x_t
 
 if __name__ == "__main__":
-    args = parse_args()  # Parse command-line arguments
+    args = parse_args()
 
     # Set up directories
     base_dir = "/web/aratey/public_html/delight/nf/models_DM/DM_old/"
@@ -37,8 +37,23 @@ if __name__ == "__main__":
     # Device setup
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
 
+    # Load noise schedule
+    if args.noise_schedule == 'cosine':
+        noise_schedule = cosine_noise_schedule(1000)
+    elif args.noise_schedule == 'linear':
+        noise_schedule = linear_noise_schedule(1000)
+    elif args.noise_schedule == 'constant':
+        noise_schedule = torch.ones(1000)
+    elif args.noise_schedule == 'none':
+        noise_schedule = None
+    else:
+        raise ValueError(f"Unsupported noise_schedule: {args.noise_schedule}")
+
+    if noise_schedule is not None:
+        noise_schedule = noise_schedule.to(device)
+
     # Load trained diffusion model
-    diffusion_model = DiffusionModel(input_dim=4, num_timesteps=1000, device=device).to(device)
+    diffusion_model = DiffusionModel(input_dim=4, num_timesteps=1000, device=device, noise_schedule=noise_schedule).to(device)
     checkpoint = torch.load(f'{args.model_dir}/dm_epoch_99.pt', map_location=device)
     diffusion_model.load_state_dict(checkpoint)
     diffusion_model.eval()
@@ -57,7 +72,7 @@ if __name__ == "__main__":
 
         # Load simulation data for the energy index
         sim = None
-        for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
+        for f in glob.glob(f"/ceph/bmaier/delight/ml/nf/data/NR_final_{i}_*.npy"):
             if sim is None:
                 sim = np.load(f)[:, :4]
             else:
