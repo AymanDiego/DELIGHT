@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 import mplhep as hep
-from model_DM import DiffusionModel, cosine_noise_schedule, linear_noise_schedule, constant_noise_schedule 
+from model_DM import DiffusionModel
 
 hep.style.use(hep.style.ATLAS)
 
@@ -30,7 +30,6 @@ def parse_args():
     # Diffusion model parameters
     parser.add_argument('--num_timesteps', type=int, default=1000, help="Number of diffusion timesteps")
     parser.add_argument('--noise_magnitude', type=float, default=0.0, help="Magnitude of noise to apply to energy values")
-    parser.add_argument('--noise_scale', type=float, default=0.001, help="Scaling factor for the cosine noise schedule")
     parser.add_argument('--energy_threshold', type=float, default=0.0, help="Threshold below which noise is added")
     
     # Training parameters
@@ -41,11 +40,7 @@ def parse_args():
 
     # Data cutoff
     parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy value. Ignore events below this energy in eV.')
-   
-    # Add argument for noise schedule
-    parser.add_argument('--noise_schedule', type=str, choices=['cosine', 'linear', 'constant', 'none'], default='none',
-                        help="Type of noise schedule to use: 'cosine', 'linear', 'constant', or 'none'")
-
+    
     return parser.parse_args()
 
 def setup_logger():
@@ -65,7 +60,7 @@ def apply_noise(data, energy_column, noise_magnitude, energy_threshold):
     return data
 
 # Function to save hyperparameters to CSV
-def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, noise_scale, energy_threshold, cutoff_e, noise_schedule_type, save_dir):
+def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epochs, weight_decay, noise_magnitude, energy_threshold, cutoff_e, save_dir):
     """
     Saves the hyperparameters used for training the diffusion model to a CSV file in save_dir.
     """
@@ -79,14 +74,13 @@ def save_hyperparameters_to_csv(input_dim, num_timesteps, learning_rate, num_epo
         "num_epochs": num_epochs,
         "weight_decay": weight_decay,
         "noise_magnitude": noise_magnitude,
-        "noise_scale": noise_scale,
         "energy_threshold": energy_threshold,
         "cutoff_energy": cutoff_e,
-        "noise_schedule_type": noise_schedule_type,
     }
 
     df = pd.DataFrame([hyperparams])
     df.to_csv(f"{save_dir}/hyperparameters.csv", index=False)
+
 
 def concat_files(filelist, cutoff):
     """
@@ -115,10 +109,10 @@ def concat_files(filelist, cutoff):
     return all_data
 
 # Train diffusion model
-def train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir, model_dir, noise_schedule):
+def train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir, model_dir):
     optimizer = torch.optim.Adam(diffusion_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, min_lr=1e-6)
-
+  
     data_train = apply_noise(data_train, energy_column=4, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
     data_val = apply_noise(data_val, energy_column=4, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
     
@@ -143,7 +137,7 @@ def train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir,
             batch_data = batch_data.to(diffusion_model.device)  # Ensure batch data is on the same device
             batch_context = batch_context.to(diffusion_model.device)  # Ensure batch context is on the same device
             optimizer.zero_grad()
-            loss = diffusion_model.compute_loss(batch_data, batch_context, noise_schedule)
+            loss = diffusion_model.compute_loss(batch_data, batch_context)
             loss.backward()
             optimizer.step()
             total_loss_train += loss.item()
@@ -154,7 +148,7 @@ def train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir,
             for batch_data, batch_context in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
                 batch_data = batch_data.to(diffusion_model.device)  # Ensure validation data is on the same device
                 batch_context = batch_context.to(diffusion_model.device)  # Ensure validation context is on the same device
-                loss_val = diffusion_model.compute_loss(batch_data, batch_context, noise_schedule)
+                loss_val = diffusion_model.compute_loss(batch_data, batch_context)
                 total_loss_val += loss_val.item()
 
         scheduler.step(total_loss_val / len(dataloader_val))
@@ -184,11 +178,7 @@ def train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir,
 if __name__ == "__main__":
     args = parse_args()
     logger = setup_logger()
-
-    # Validate noise_scale
-    if args.noise_scale <= 0:
-        raise ValueError("noise_scale must be positive.")
-
+    
     # Define the save directory
     base_dir = "/web/aratey/public_html/delight/nf/models_DM/DM_old/"
     # Append loss_dir if provided
@@ -223,29 +213,10 @@ if __name__ == "__main__":
         num_epochs=args.num_epochs,
         weight_decay=args.weight_decay,
         noise_magnitude=args.noise_magnitude,
-        noise_scale=args.noise_scale,
         energy_threshold=args.energy_threshold,
         cutoff_e=args.cutoff_e,
-        save_dir=save_dir,
-        noise_schedule_type=args.noise_schedule
+        save_dir=save_dir
     )
 
-    # Precompute noise schedule based on user input
-    if args.noise_schedule == 'cosine':
-        noise_schedule = cosine_noise_schedule(args.num_timesteps) * args.noise_scale
-    elif args.noise_schedule == 'linear':
-        noise_schedule = linear_noise_schedule(args.num_timesteps) * args.noise_scale
-    elif args.noise_schedule == 'constant':
-        noise_schedule = constant_noise_schedule(args.num_timesteps, scale=args.noise_scale)
-    elif args.noise_schedule == 'none':
-        noise_schedule = None  # No noise schedule, skip adding noise
-    else:
-        raise ValueError(f"Unknown noise schedule: {args.noise_schedule}")
-
-    # Move the noise schedule tensor to the correct device if not None
-    if noise_schedule is not None:
-        noise_schedule = noise_schedule.to(args.device)
-
-    diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device, noise_schedule=noise_schedule).to(args.device)
-    train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir, args.model_dir, noise_schedule)
-
+    diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device).to(args.device)
+    train_diffusion_model(diffusion_model, data_train, data_val, args, save_dir, args.model_dir)
