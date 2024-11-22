@@ -99,6 +99,13 @@ def init_weights(m):
         if m.bias is not None:
             nn.init.constant_(m.bias, 0)  # Initialize bias to 0
 
+class ModifiedResidualNet(ResidualNet):
+    def forward(self, inputs, context=None):
+        # Call the parent class's forward method
+        outputs = super().forward(inputs, context)
+        # Apply Softplus to enforce non-negative outputs
+        return nn.Softplus()(outputs)
+
 class SelfAttention(nn.Module):
     def __init__(self, dim):
         super(SelfAttention, self).__init__()
@@ -120,9 +127,7 @@ class SelfAttention(nn.Module):
         # Remove the extra dimension and return output
         return attention_output.squeeze(1)
 
-
 class AttentionDiffusionModel(nn.Module):
-
     def __init__(self, data_dim, condition_dim, timesteps, device):
         super(AttentionDiffusionModel, self).__init__()
         self.timesteps = timesteps
@@ -130,33 +135,31 @@ class AttentionDiffusionModel(nn.Module):
         self.condition_dim = condition_dim
         self.device = device  # Store the device
 
-        # Network layers
+        # Attention mechanism
         self.attention = SelfAttention(data_dim + condition_dim)
 
-        # Increased hidden dimension size and added an extra layer for more capacity
-        self.fc1 = nn.Linear(data_dim + condition_dim, 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 256)
-        self.fc4 = nn.Linear(256, data_dim)
-
-        # Initialize Softplus to enforce positive outputs
-        self.softplus = nn.Softplus()
+        # Replace individual feed-forward layers with ModifiedResidualNet
+        self.residual_net = ModifiedResidualNet(
+            in_features=data_dim + condition_dim,
+            out_features=data_dim,
+            hidden_features=256,  # Match the hidden size
+            context_features=None,  # No additional context required
+            num_blocks=2,  # Number of residual blocks
+            activation=nn.ReLU()  # Use ReLU for internal layers
+        )
 
     def forward(self, x, t, condition):
         # Concatenate data with condition
         x = torch.cat([x, condition], dim=-1)
 
-        # Add attention mechanism
+        # Apply attention mechanism
         x = self.attention(x)
 
-        # Feedforward layers
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.relu(self.fc3(x))
-        x = self.fc4(x)
+        # Apply ModifiedResidualNet
+        x = self.residual_net(x)
 
-        # Apply Softplus to the final output layer to enforce non-negative outputs
-        return self.softplus(x)
+        # Apply Softplus to ensure non-negative outputs
+        return torch.nn.functional.softplus(x)
 
 class ConditionalNormalizingFlowModel(nn.Module):
     def __init__(self, input_dim, context_dim, hidden_dim, num_layers, device):
@@ -177,13 +180,13 @@ class ConditionalNormalizingFlowModel(nn.Module):
             # Define a transform with a custom neural network, using context as an additional input in the transform network
             transforms.append(AffineCouplingTransform(
                 mask=mask,
-                transform_net_create_fn=lambda in_features, out_features: ResidualNet(
+                transform_net_create_fn=lambda in_features, out_features: ModifiedResidualNet(
                     in_features=in_features,
                     out_features=out_features,
                     hidden_features=hidden_dim,
-                    context_features=context_dim,  # This allows us to condition on the contex
-                    num_blocks=2,
-                    activation=nn.Softplus()  # Apply Softplus to ensure positive outputs
+                    context_features=context_dim,  # This allows us to condition on the context
+                    num_blocks=2,  # Number of residual blocks
+                    activation=nn.ReLU()  # Use ReLU within the residual blocks
                 ).to(self.device)
             ))
             transforms.append(RandomPermutation(features=input_dim))  # Randomly permute after each layer

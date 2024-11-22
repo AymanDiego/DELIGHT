@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     # Create noise schedule and model
     noise_schedule = cosine_noise_schedule(timesteps).to(device)
-    df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=device).to(device)
+    df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=args.device).to(device)
     df_model.apply(init_weights)  # Apply weight initialization
 
     # Save hyperparameters
