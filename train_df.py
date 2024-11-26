@@ -10,7 +10,7 @@ hep.style.use(hep.style.ATLAS)
 import pandas as pd
 import numpy as np
 import torch
-from model import AttentionDiffusionModel, cosine_noise_schedule, diffusion_loss, sample_step, init_weights
+from model import AttentionDiffusionModel, linear_noise_schedule, diffusion_loss, sample_step
 
 # ArgumentParser to handle command-line arguments
 def parse_args():
@@ -20,19 +20,9 @@ def parse_args():
     parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
     
     # Add argument for specifying the directory to save model files
-    parser.add_argument('--model_dir', type=str, default='models_diffusion_timesteps', help='Directory to save the model checkpoints')
+    parser.add_argument('--model_dir', type=str, default='models_df', help='Directory to save the model checkpoints')
 
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
-
-    # Add argument to specify the file pattern (all files or specific ones)
-    parser.add_argument('--file_pattern', type=str, default='all', help='Specify file pattern: "all" for all files or a specific pattern like NR_final_200_*.npy')
-    
-    # Add argument for number of epochs and learning rate
-    parser.add_argument('--num_epochs', type=int, default=19, help='Number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer')
-
-    # Add argument for the cutoff energy
-    parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy value. Ignore events below this energy in eV.')
 
     return parser.parse_args()
 
@@ -54,12 +44,6 @@ def setup_logger():
 
     return logger
 
-# Check for NaN or Inf values in input data
-def check_data_for_nan_inf(data):
-    if torch.isnan(data).any() or torch.isinf(data).any():
-        raise ValueError("NaN or Inf found in input data.")
-
-# Function to save hyperparameters to CSV for diffusion model
 def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, learning_rate, num_epochs, save_dir):
     hyperparams = {
         "data_dim": data_dim,
@@ -71,8 +55,9 @@ def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, le
     df = pd.DataFrame([hyperparams])
     df.to_csv(f"{save_dir}/diffusion_hyperparameters.csv", index=False)
 
+
 # Training the diffusion model
-def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, num_epochs, noise_schedule, batch_size=512, learning_rate=1e-4, timesteps=300):
+def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, num_epochs=1000, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
     optimizer = torch.optim.Adam(df_model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     
@@ -82,12 +67,6 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
     data_val = torch.tensor(data_val, dtype=torch.float32, device=df_model.device)
     context_val = torch.tensor(context_val, dtype=torch.float32, device=df_model.device)
     
-    # Check for NaN or Inf values in the training and validation data
-    check_data_for_nan_inf(data_train)
-    check_data_for_nan_inf(context_train)
-    check_data_for_nan_inf(data_val)
-    check_data_for_nan_inf(context_val)
-
     dataset_train = torch.utils.data.TensorDataset(data_train, context_train)
     dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
     dataset_val = torch.utils.data.TensorDataset(data_val, context_val)
@@ -103,27 +82,9 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_train, desc=f"Training epoch {epoch}"):
             batch_data, batch_context = batch
             optimizer.zero_grad()
-
-            # Generate a random time step for each batch sample
-            t = torch.randint(0, timesteps, (batch_data.shape[0],)).to(df_model.device)
-        
-            # Forward pass and check for NaNs in model output
-            output = df_model(batch_data, t, batch_context)
-            if torch.isnan(output).any() or torch.isinf(output).any():
-                print(f"NaN or Inf detected in model output at epoch {epoch}")
-                raise ValueError("NaN or Inf detected in model output")
-
-            # Calculate loss
-            loss = diffusion_loss(df_model, batch_data, batch_context, noise_schedule, timesteps)
-            
-            # Check for NaN in the calculated loss
-            if torch.isnan(loss) or torch.isinf(loss):
-                print("NaN encountered in training loss at epoch", epoch)
-                raise ValueError("NaN encountered in loss")
-
+            loss = diffusion_loss(df_model, data_train, context_train, noise_schedule, timesteps)
             total_loss_train += loss.item()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(df_model.parameters(), max_norm=1.0)  # Clip gradients to a max norm of 1.0
             optimizer.step()
 
         scheduler.step()
@@ -133,64 +94,77 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
             with torch.no_grad():
                 batch_data, batch_context = batch
-                loss_val = diffusion_loss(df_model, batch_data, batch_context, noise_schedule, timesteps)
-                
-                # Check for NaN in the validation loss
-                if torch.isnan(loss_val):
-                    print(f"NaN encountered in validation loss at epoch {epoch}")
-                    return  # Exit the training if NaNs are encountered
-
+                loss_val = diffusion_loss(df_model, data_val, context_val, noise_schedule, timesteps)
                 total_loss_val += loss_val.item()
         
-        # Log and save losses
+        # Print loss every epoch
         print(f"Epoch {epoch}, Train Loss: {total_loss_train / len(dataloader_train.dataset)}, Val Loss: {total_loss_val / len(dataloader_val.dataset)}")
         all_losses_train.append(total_loss_train / len(dataloader_train.dataset))
         all_losses_val.append(total_loss_val / len(dataloader_val.dataset))
 
-        # Save models in the specified directory
-        state_dicts = {'model': df_model.state_dict(), 'opt': optimizer.state_dict(), 'lr': scheduler.state_dict()}
+        # Save models
+        state_dicts = {'model':df_model.state_dict(),'opt':optimizer.state_dict(),'lr':scheduler.state_dict()}
         if not os.path.exists(args.model_dir):
-            os.makedirs(args.model_dir)
+            os.makedirs(args.model_dir) 
         torch.save(state_dicts, f'{args.model_dir}/epoch-{epoch}.pt')
     
     # Save loss data to a CSV file
     df = pd.DataFrame({"loss_train": all_losses_train, "loss_val": all_losses_val})
     df.to_csv(f"{save_dir}/loss.csv", index=False)
 
-    # Plot losses
-    fig, ax = plt.subplots()
+    fig,ax = plt.subplots()
     plt.yscale('log')
-    plt.plot([i for i in range(len(all_losses_train))], all_losses_train, label='train')
-    plt.plot([i for i in range(len(all_losses_val))], all_losses_val, label='val')
+    plt.plot([i for i in range(len(all_losses_train))],all_losses_train,label='train')
+    plt.plot([i for i in range(len(all_losses_val))],all_losses_val,label='val')
     plt.legend()
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.savefig(f"{save_dir}/loss.png", bbox_inches='tight', dpi=300)
     plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
+    
+def validate():
+    flow_model.eval()
+    for batch in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
+        with torch.no_grad():
+            batch_data, batch_context = batch
+            loss = -flow_model(batch_data, batch_context).mean()
 
-# Concatenates files and applies cutoff for loading data
-def concat_files(filelist, cutoff):
+
+def concat_files(filelist,cutoff_min,cutoff_max):
     all_data = None
-    for f in tqdm.tqdm(filelist, desc="Loading and processing data"):
+    for i,f in tqdm.tqdm(enumerate(filelist), total=len(filelist), desc="Loading data into array"):
         # Load file and retrieve all four channels
         data = np.load(f)[:, :4]
-
+        
         # Calculate energy as the sum of all channels
         energy = np.sum(data, axis=1).reshape(-1, 1)
 
+        if energy[0] < cutoff_min:
+            continue
+
+        if energy[0] > cutoff_max:
+            continue
+
         # Filter out entries below the cutoff energy
-        valid_entries = energy >= cutoff
+        valid_entries = energy >= 0
         data = data[valid_entries.ravel()]
         energy = energy[valid_entries.ravel()]
 
         # Concatenate data if not empty
         if all_data is None:
-            all_data = np.concatenate((data, energy), axis=1)
+            all_data = np.concatenate((data/energy, energy/1000000), axis=1)
         else:
-            all_data = np.concatenate((all_data, np.concatenate((data, energy), axis=1)), axis=0)
+            all_data = np.concatenate((all_data, np.concatenate((data/energy, energy/1000000), axis=1)), axis=0)
+
+    idx = [i for i in range(len(all_data))]
+    print("Number of events:", len(idx))
+    random.shuffle(idx)
+    #all_data = all_data[idx][:50000]
+    all_data = all_data[idx]
 
     return all_data
 
+# Example usage
 if __name__ == "__main__":
     args = parse_args()  # Parse command-line arguments
     logger = setup_logger()
@@ -208,49 +182,42 @@ if __name__ == "__main__":
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    # Set device
-    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
-    logger.info(f'Training on {device}')
-
     # Loading data
-    cutoff_e = args.cutoff_e
-    logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
-
-    if args.file_pattern == 'all':
-        files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*npy")
-        files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*npy")
-    else:
-        files_train = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/train/{args.file_pattern}")
-        files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
-
-    # Shuffle and load files
+    cutoff_min_e = 1000. # eV. Ingnore interactions below that.
+    cutoff_max_e = 10000. # eV. Ingnore interactions higher than that.
+    logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
+    files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*npy")
+    files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*npy")
     random.seed(123)
     random.shuffle(files_train)
-    data_train = concat_files(files_train, cutoff_e)
-    data_val = concat_files(files_val, cutoff_e)
+    data_train = concat_files(files_train,cutoff_min_e,cutoff_max_e)
+    data_val = concat_files(files_val,cutoff_min_e,cutoff_max_e)
     
-    # Separate data and context
+    # Separate the data into the first 4 dimensions (input) and the 5th dimension (context)
     data_train_4d = data_train[:, :4]
     context_train_5d = data_train[:, 4:5]
     data_val_4d = data_val[:, :4]
     context_val_5d = data_val[:, 4:5]
-
-    # Model parameters
+    
+    # Initialize the conditional flow model (input dimension 4, context dimension 1, hidden dimension 64, 5 layers)
     data_dim = 4
     condition_dim = 1
-    timesteps = 1000
-    batch_size = 128
-
-    # Create noise schedule and model
-    noise_schedule = cosine_noise_schedule(timesteps).to(device)
+    timesteps = 25
+    batch_size = 1024
+    learning_rate = 1e-2
+    num_epochs = 150
+    noise_schedule = linear_noise_schedule(timesteps).to(args.device)
+    device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
+    logger.info(f'Training on {device}')
+    
+    # Create and move the model to the appropriate device
     df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=args.device).to(device)
-    df_model.apply(init_weights)  # Apply weight initialization
 
     # Save hyperparameters
-    save_diffusion_hyperparameters_to_csv(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, learning_rate=args.learning_rate, num_epochs=args.num_epochs, save_dir=save_dir)
+    save_diffusion_hyperparameters_to_csv(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, learning_rate=learning_rate, num_epochs=num_epochs, save_dir=save_dir)
+
 
     # Train the model
-    train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=args.num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=args.learning_rate, timesteps=timesteps)
+    train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=learning_rate, timesteps=timesteps)
+    logger.info(f'Done training.')
     
-    logger.info('Done training.')
-
