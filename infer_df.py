@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load the diffusion model checkpoint')
     parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
-    parser.add_argument('--cutoff', type=float, default=0.0, help='Cutoff energy threshold in eV for processing')
+    parser.add_argument('--cutoff', type=float, default=100000.0, help='Cutoff energy threshold in eV for processing')
     return parser.parse_args()
 
 # Sampling function
