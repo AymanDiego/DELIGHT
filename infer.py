@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
     parser.add_argument('--normalize_energies', action='store_true', help='Flag to re-transform normalized energies to original scale')
     parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
+    parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy threshold in eV for generating plots')
     return parser.parse_args()
 
 # Function to load normalization parameters
@@ -67,21 +68,29 @@ if __name__ == "__main__":
     # Example: Generate samples
     energies = np.geomspace(10, 1e6, 500)
 
-    for i, e in enumerate(energies):
-        if i % 50 != 0:
+    for i,e in enumerate(energies):
+        # Skip energies outside the specified range
+        if e < 1000 or e > 10000:
             continue
-
+        
+        if i % 10 != 0:
+            continue
         print(f"Loading simulated data corresponding to index {i}")
 
-        # Loading the simulated data files for the given energy index
-        for f in glob.glob(f"/ceph/aratey/delight/ml/nf/data/NR_final_{i}_*.npy"):
-            sim = None
+        sim = None
+        for f in glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/NR_final_{i}_*.npy"):
+            if "lin" in f:
+                continue
             if sim is None:
                 sim = np.load(f)[:, :4]
             else:
-                sim = np.concatenate((sim, np.load(f)[:, :4]))
+                sim = np.concatenate((sim, np.load(f)[:, :4]))            
 
-        print(f"Generating samples for {e} eV (index {i})")
+        energy = np.sum(sim, axis=1).reshape(-1, 1)
+        if energy[0][0] < args.cutoff_e:
+            print(f"Skipping {energy[0][0]:.2f} eV")
+            continue
+        energy = torch.tensor(energy,device=device,dtype=torch.float32)
 
         # Generate samples using the flow model
         fixed_value_5th_dim = torch.tensor([[float(e)]], device=device)
@@ -91,11 +100,6 @@ if __name__ == "__main__":
         # Apply reverse transformation if normalization was applied
         if args.normalize_energies:
             gen = gen * stds + means  # Reverse transformation: (normalized value * std) + mean
-
-        # Loop through each channel (0 to 3) and print the values of gen[:, *]
-        for channel in range(4):
-            print(f"Values for channel {channel}:")
-            print(gen[:, channel])
 
         # Plot and save the histograms for different channels
         fig, ax = plt.subplots(figsize=(7, 6))
