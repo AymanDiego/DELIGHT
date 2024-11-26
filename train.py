@@ -40,9 +40,6 @@ def parse_args():
     # Add argument for optional energy normalization
     parser.add_argument('--normalize_energies', action='store_true', help='Flag to apply energy normalization (mean 0, stddev 1)')
 
-    # Add argument for the cutoff energy
-    parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy value. Ignore events below this energy in eV.')
-
     return parser.parse_args()
 
 # Logger setup
@@ -203,29 +200,37 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     plt.savefig(f"{save_dir}/loss.png", bbox_inches='tight', dpi=300)
     plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
 
-def concat_files(filelist, cutoff):
-    """
-    Concatenates files and calculates energy by summing across all channels.
-    Ignores interactions with total energy below the specified cutoff.
-    """
+def concat_files(filelist,cutoff_min,cutoff_max):
     all_data = None
-    for f in tqdm.tqdm(filelist, desc="Loading and processing data"):
+    for i,f in tqdm.tqdm(enumerate(filelist), total=len(filelist), desc="Loading data into array"):
         # Load file and retrieve all four channels
         data = np.load(f)[:, :4]
-
+        
         # Calculate energy as the sum of all channels
         energy = np.sum(data, axis=1).reshape(-1, 1)
 
+        if energy[0] < cutoff_min:
+            continue
+
+        if energy[0] > cutoff_max:
+            continue
+
         # Filter out entries below the cutoff energy
-        valid_entries = energy >= cutoff
+        valid_entries = energy >= 0
         data = data[valid_entries.ravel()]
         energy = energy[valid_entries.ravel()]
 
         # Concatenate data if not empty
         if all_data is None:
-            all_data = np.concatenate((data, energy), axis=1)
+            all_data = np.concatenate((data/energy, energy/1000000), axis=1)
         else:
-            all_data = np.concatenate((all_data, np.concatenate((data, energy), axis=1)), axis=0)
+            all_data = np.concatenate((all_data, np.concatenate((data/energy, energy/1000000), axis=1)), axis=0)
+
+    idx = [i for i in range(len(all_data))]
+    print("Number of events:", len(idx))
+    random.shuffle(idx)
+    #all_data = all_data[idx][:50000]
+    all_data = all_data[idx]
 
     return all_data
 
@@ -246,8 +251,10 @@ if __name__ == "__main__":
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    cutoff_e = args.cutoff_e  # eV. Ignore interactions below that.
-    logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
+    # Loading data
+    cutoff_min_e = 100000. # eV. Ingnore interactions below that.
+    cutoff_max_e = 1000000. # eV. Ingnore interactions higher than that.
+    logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
 
     if args.file_pattern == 'all':
         files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
@@ -261,8 +268,8 @@ if __name__ == "__main__":
 
     random.seed(123)
     random.shuffle(files_train)
-    data_train = concat_files(files_train, cutoff_e)
-    data_val = concat_files(files_val, cutoff_e)
+    data_train = concat_files(files_train,cutoff_min_e,cutoff_max_e)
+    data_val = concat_files(files_val,cutoff_min_e,cutoff_max_e)
 
     # Normalize the training and validation data
     if args.normalize_energies:

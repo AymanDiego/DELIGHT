@@ -18,7 +18,7 @@ def parse_args():
     parser.add_argument('--model_dir', type=str, default='', help='Directory to load dm_epoch_300.pt')
     parser.add_argument('--normalize_energies', action='store_true', help='Flag to re-transform normalized energies to original scale')
     parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
-    parser.add_argument('--cutoff_e', type=float, default=0.0, help='Cutoff energy threshold in eV for generating plots')
+    parser.add_argument('--cutoff_e', type=float, default=100000.0, help='Cutoff energy threshold in eV for generating plots')
     return parser.parse_args()
 
 # Function to load normalization parameters
