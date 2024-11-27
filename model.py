@@ -123,13 +123,13 @@ class ConditionalNormalizingFlowModel(nn.Module):
             # Define a transform with a custom neural network, using context as an additional input in the transform network
             transforms.append(AffineCouplingTransform(
                 mask=mask,
-                transform_net_create_fn=lambda in_features, out_features: ModifiedResidualNet(
-                    in_features=in_features,   # No context concatenation here
+                transform_net_create_fn=lambda in_features, out_features: ResidualNet(
+                    in_features=in_features,
                     out_features=out_features,
                     hidden_features=hidden_dim,
-                    context_features=context_dim,  # This allows us to condition on the context
-                    num_blocks=2,  # Number of residual blocks
-                    activation=nn.ReLU()  # Use ReLU within the residual blocks
+                    context_features=context_dim,  # This allows us to condition on the contex
+                    num_blocks=2,
+                    activation=nn.Softplus()  # Apply Softplus to ensure positive outputs
                 ).to(self.device)
             ))
             transforms.append(RandomPermutation(features=input_dim))  # Randomly permute after each layer
@@ -146,5 +146,9 @@ class ConditionalNormalizingFlowModel(nn.Module):
     def sample(self, num_samples, context):
         # Ensure context is on the correct device
         context = context.to(self.device)
-        return self.flow.sample(num_samples, context)
 
+        # Sample from the model
+        samples = self.flow.sample(num_samples, context)
+
+        # Apply Softplus to ensure positive outputs
+        return torch.nn.functional.softplus(samples)
