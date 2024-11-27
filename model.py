@@ -97,12 +97,6 @@ class AttentionDiffusionModel(nn.Module):
         x = self.fc3(x)
         return x
 
-class ModifiedResidualNet(ResidualNet):
-    def forward(self, inputs, context=None):
-        # Call the parent class's forward method
-        outputs = super().forward(inputs, context)
-        # Apply Softplus to enforce non-negative outputs
-        return nn.Softplus()(outputs)
 
 class ConditionalNormalizingFlowModel(nn.Module):
     def __init__(self, input_dim, context_dim, hidden_dim, num_layers, device):
@@ -124,12 +118,11 @@ class ConditionalNormalizingFlowModel(nn.Module):
             transforms.append(AffineCouplingTransform(
                 mask=mask,
                 transform_net_create_fn=lambda in_features, out_features: ResidualNet(
-                    in_features=in_features,
+                    in_features=in_features,   # No context concatenation here
                     out_features=out_features,
                     hidden_features=hidden_dim,
-                    context_features=context_dim,  # This allows us to condition on the contex
-                    num_blocks=2,
-                    activation=nn.Softplus()  # Apply Softplus to ensure positive outputs
+                    context_features=context_dim,  # This allows us to condition on the context
+                    num_blocks=2
                 ).to(self.device)
             ))
             transforms.append(RandomPermutation(features=input_dim))  # Randomly permute after each layer
@@ -146,9 +139,5 @@ class ConditionalNormalizingFlowModel(nn.Module):
     def sample(self, num_samples, context):
         # Ensure context is on the correct device
         context = context.to(self.device)
+        return self.flow.sample(num_samples, context)
 
-        # Sample from the model
-        samples = self.flow.sample(num_samples, context)
-
-        # Apply Softplus to ensure positive outputs
-        return torch.nn.functional.softplus(samples)

@@ -18,7 +18,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Conditional Normalizing Flow Model")
     
     # Add argument for GPU selection
-    parser.add_argument('--device', type=str, default='cuda:0', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
+    parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
     
     # Add argument for specifying the directory to save model files
     parser.add_argument('--model_dir', type=str, default='models/', help='Directory to save the model checkpoints')
@@ -32,7 +32,7 @@ def parse_args():
 
     # Add argument for number of epochs, learning rate, weight decay
     parser.add_argument('--num_epochs', type=int, default=301, help='Number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-2, help='Learning rate for optimizer')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
 
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
@@ -113,7 +113,7 @@ def save_normalization_params(means, stds, model_dir):
         os.makedirs(model_dir)
 
     df = pd.DataFrame({"channel": ["phonon", "triplet", "UV", "IR"], "means": means, "stds": stds})
-    df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
+    df.to_csv(f"{save_dir}/normalization_params.csv", index=False)
 
 # Function to save post-normalization statistics to CSV
 def save_post_normalization_params(post_means, post_stds, loss_dir):
@@ -257,11 +257,11 @@ if __name__ == "__main__":
     logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
 
     if args.file_pattern == 'all':
-        files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
-        files_val = glob.glob("/ceph/aratey/delight/ml/nf/data/val/*.npy")
+        files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
+        files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*.npy")
     else:
-        files_train = glob.glob(f"/ceph/aratey/delight/ml/nf/data/train/{args.file_pattern}")
-        files_val = glob.glob(f"/ceph/aratey/delight/ml/nf/data/val/{args.file_pattern}")
+        files_train = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/train/{args.file_pattern}")
+        files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
 
     # Log the file pattern being used
     logger.info(f'Using file pattern: {args.file_pattern}')
