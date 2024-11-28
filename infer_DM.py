@@ -1,8 +1,10 @@
 import torch
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import mplhep as hep
 import glob
+import argparse
 from model_DM import DiffusionModel
 
 hep.style.use(hep.style.ATLAS)
@@ -56,7 +58,7 @@ if __name__ == "__main__":
 
     for i, e in enumerate(energies):
         # Skip energies outside the specified range
-        if e < 1000 or e > 10000:
+        if e < 100000 or e > 1000000:
             continue
         
         if i % 10 != 0:
