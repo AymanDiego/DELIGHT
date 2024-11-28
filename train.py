@@ -113,7 +113,7 @@ def save_normalization_params(means, stds, model_dir):
         os.makedirs(model_dir)
 
     df = pd.DataFrame({"channel": ["phonon", "triplet", "UV", "IR"], "means": means, "stds": stds})
-    df.to_csv(f"{model_dir}/normalization_params.csv", index=False)
+    df.to_csv(f"{save_dir}/normalization_params.csv", index=False)
 
 # Function to save post-normalization statistics to CSV
 def save_post_normalization_params(post_means, post_stds, loss_dir):
@@ -257,11 +257,11 @@ if __name__ == "__main__":
     logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
 
     if args.file_pattern == 'all':
-        files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
-        files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*.npy")
+        files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
+        files_val = glob.glob("/ceph/aratey/delight/ml/nf/data/val/*.npy")
     else:
-        files_train = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/train/{args.file_pattern}")
-        files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
+        files_train = glob.glob(f"/ceph/aratey/delight/ml/nf/data/train/{args.file_pattern}")
+        files_val = glob.glob(f"/ceph/aratey/delight/ml/nf/data/val/{args.file_pattern}")
 
     # Log the file pattern being used
     logger.info(f'Using file pattern: {args.file_pattern}')

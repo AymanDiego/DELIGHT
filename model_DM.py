@@ -1,15 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from nflows.nn.nets import ResidualNet
 
-# Subclassing ResidualNet to apply Softplus to its output
-class ModifiedResidualNet(ResidualNet):
-    def forward(self, inputs, context=None):
-        outputs = super().forward(inputs, context)  # Call the original forward method
-        return nn.Softplus()(outputs)  # Apply Softplus activation to enforce non-negativity
-
-# Update the DiffusionModel to use ModifiedResidualNet
 class DiffusionModel(nn.Module):
     def __init__(self, input_dim, num_timesteps, device):
         super(DiffusionModel, self).__init__()
@@ -17,13 +8,14 @@ class DiffusionModel(nn.Module):
         self.num_timesteps = num_timesteps
         self.device = device
 
-        # Use the modified ResidualNet
-        self.network = ModifiedResidualNet(
-            in_features=input_dim + 1,  # Input features + context
-            out_features=input_dim,  # Output should match input features
-            hidden_features=128,  # Number of hidden units
-            context_features=None,  # No additional context (other than energy dimension)
-            num_blocks=2,  # Number of residual blocks
+        # Define the architecture for the network
+        # Match the input_dim+1 to account for the context/energy dimension
+        self.network = nn.Sequential(
+            nn.Linear(input_dim + 1, 128),  # Add context (energy) into the input
+            nn.ReLU(),
+            nn.Linear(128, 128),
+            nn.ReLU(),
+            nn.Linear(128, input_dim)  # Output matches the input data without context (4 dims)
         )
 
     def q_sample(self, x_start, t, noise=None):
