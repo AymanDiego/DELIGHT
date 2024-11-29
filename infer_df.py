@@ -61,6 +61,10 @@ if __name__ == "__main__":
     energies = np.geomspace(10, 1e6, 500)
 
     for i, e in enumerate(energies):
+        # Skip energies outside the specified range
+        if e < 1000 or e > 10000:
+            continue
+
         if i % 10 != 0:
             continue
         print(f"Loading simulated data corresponding to index {i}")

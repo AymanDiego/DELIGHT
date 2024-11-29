@@ -23,7 +23,7 @@ def sample_step(model, x, t, condition, alpha_bar):
 def diffusion_loss(model, x, condition, noise_schedule, timesteps):
     # Choose a random timestep
     t = torch.randint(0, timesteps, (x.shape[0],)).to(x.device)
-    noise = torch.randn_like(x).to(x.device)
+    noise = 5 * torch.randn_like(x).to(x.device)
     alpha_bar = torch.cumprod(1 - noise_schedule, dim=0)
     
     # Ensure alpha_bar[t] has an extra dimension to match x and noise
