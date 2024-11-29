@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate for optimizer')
     parser.add_argument('--num_epochs', type=int, default=100, help='Number of training epochs')    
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')    
+    parser.add_argument('--batch_size', type=int, default=512, help='batch size')    
     return parser.parse_args()
 
 def setup_logger():
@@ -167,22 +168,18 @@ if __name__ == "__main__":
 
     # Define the save directory
     base_dir = "/web/aratey/public_html/delight/nf/models_DM/DM_old/"
-    # Append loss_dir if provided
-    if args.loss_dir:
-        save_dir = os.path.join(base_dir, args.loss_dir)
-    else:
-        save_dir = base_dir
+    save_dir = os.path.join(base_dir, args.loss_dir) if args.loss_dir else base_dir
+    os.makedirs(save_dir, exist_ok=True)
 
-    # Ensure the directory exists
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    logger.info(f"Saving outputs to: {save_dir}")
 
-    # Loading data
-    cutoff_min_e = 1000. # eV. Ingnore interactions below that.
-    cutoff_max_e = 10000. # eV. Ingnore interactions higher than that.
-    logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
+    # Energy range cutoffs
+    cutoff_min_e = 1_000.0  # eV
+    cutoff_max_e = 10_000.0  # eV
+    logger.info(f"Loading data for events with energies between {cutoff_min_e} and {cutoff_max_e} eV.")
 
-    if args.file_pattern == 'all':
+    # Load data
+    if args.file_pattern == "all":
         files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*.npy")
         files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*.npy")
     else:
@@ -190,8 +187,8 @@ if __name__ == "__main__":
         files_val = glob.glob(f"/ceph/bmaier/delight/ml/nf/data/val/{args.file_pattern}")
 
     random.shuffle(files_train)
-    data_train = concat_files(files_train,cutoff_min_e,cutoff_max_e)
-    data_val = concat_files(files_val,cutoff_min_e,cutoff_max_e)
+    data_train = concat_files(files_train, cutoff_min=cutoff_min_e, cutoff_max=cutoff_max_e)
+    data_val = concat_files(files_val, cutoff_min=cutoff_min_e, cutoff_max=cutoff_max_e)
 
     # Save hyperparameters to CSV
     save_hyperparameters_to_csv(
@@ -206,6 +203,15 @@ if __name__ == "__main__":
         cutoff_max=cutoff_max_e
     )
 
+    # Initialize and train diffusion model
     diffusion_model = DiffusionModel(input_dim=4, num_timesteps=args.num_timesteps, device=args.device).to(args.device)
-    train_diffusion_model(diffusion_model, data_train, data_val, model_dir=args.model_dir, num_timesteps=args.num_timesteps, noise_magnitude=args.noise_magnitude, energy_threshold=args.energy_threshold)
+    train_diffusion_model(
+    diffusion_model=diffusion_model,
+    data_train=data_train,
+    data_val=data_val,
+    batch_size=args.batch_size,  # Pass only the value of batch_size
+    model_dir=args.model_dir,
+    num_timesteps=args.num_timesteps,
+    noise_magnitude=args.noise_magnitude,
+    energy_threshold=args.energy_threshold)
 
