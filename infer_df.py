@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     # Instantiate and load the diffusion model
     df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=device).to(device)
-    checkpoint = torch.load(f'{args.model_dir}/epoch-48.pt', map_location=device)
+    checkpoint = torch.load(f'{args.model_dir}/epoch-149.pt', map_location=device)
     df_model.load_state_dict(checkpoint['model'])
 
     # Switch model to evaluation mode
@@ -79,9 +79,6 @@ if __name__ == "__main__":
                 sim = np.concatenate((sim, np.load(f)[:, :4]))
 
         energy = np.sum(sim, axis=1).reshape(-1, 1)
-        if energy[0][0] < args.cutoff:
-            print(f"Skipping {energy[0][0]:.2f} eV")
-            continue
         energy = torch.tensor(energy, device=device, dtype=torch.float32)
 
         # Generate samples
@@ -91,6 +88,7 @@ if __name__ == "__main__":
         energy = energy.detach().cpu().numpy()
         gen = gen.detach().cpu().numpy()
 
+        print(f"Saving plots to: {save_dir}")
         # Plot results
         fig, ax = plt.subplots(figsize=(7, 6))
         plt.hist(gen[:, 0] * energy[0], histtype='step', bins=15, label='phonon channel', color='indianred')
