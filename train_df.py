@@ -12,6 +12,10 @@ import numpy as np
 import torch
 from model import AttentionDiffusionModel, linear_noise_schedule, diffusion_loss, sample_step
 
+# Load widths.csv
+widths_data = pd.read_csv("widths.csv")
+print("Columns in widths_data:", widths_data.columns)
+
 # ArgumentParser to handle command-line arguments
 def parse_args():
     parser = argparse.ArgumentParser(description="Train Diffusion Model")
@@ -57,7 +61,7 @@ def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, le
 
 
 # Training the diffusion model
-def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, num_epochs=1000, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
+def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, widths_data, num_epochs=1000, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
     optimizer = torch.optim.Adam(df_model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     
@@ -82,7 +86,7 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_train, desc=f"Training epoch {epoch}"):
             batch_data, batch_context = batch
             optimizer.zero_grad()
-            loss = diffusion_loss(df_model, data_train, context_train, noise_schedule, timesteps)
+            loss = diffusion_loss(df_model, data_train, context_train, noise_schedule, timesteps, widths_data)
             total_loss_train += loss.item()
             loss.backward()
             optimizer.step()
@@ -218,6 +222,6 @@ if __name__ == "__main__":
 
 
     # Train the model
-    train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=learning_rate, timesteps=timesteps)
+    train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=learning_rate, timesteps=timesteps, widths_data=widths_data)
     logger.info(f'Done training.')
     

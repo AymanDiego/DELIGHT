@@ -1,72 +1,83 @@
 import torch
 import torch.nn as nn
+import pandas as pd
+import numpy as np
 from nflows.flows import Flow
 from nflows.distributions.normal import StandardNormal
 from nflows.transforms import AffineCouplingTransform, RandomPermutation
 from nflows.transforms.base import CompositeTransform
 from nflows.nn.nets import ResidualNet
 
+
 def linear_noise_schedule(timesteps, start=1e-4, end=2e-2):
     return torch.linspace(start, end, timesteps)
 
+
+def interpolate_widths(condition, widths_data, device):
+    """
+    Interpolates widths for each channel based on the condition (energy).
+    """
+    energies = widths_data["energies"].values
+    channel_columns = ["ch1", "ch2", "ch3", "ch4"]  # Select only channel columns
+    widths_values = widths_data[channel_columns].values  # Extract relevant data
+
+    # Interpolation
+    interpolated_widths = np.zeros((condition.shape[0], len(channel_columns)))
+    for i, energy in enumerate(condition.cpu().numpy().flatten()):
+        idx = np.searchsorted(energies, energy, side="left")
+        if idx == 0:
+            interpolated_widths[i] = widths_values[0]
+        elif idx >= len(energies):
+            interpolated_widths[i] = widths_values[-1]
+        else:
+            fraction = (energy - energies[idx - 1]) / (energies[idx] - energies[idx - 1])
+            interpolated_widths[i] = widths_values[idx - 1] + fraction * (widths_values[idx] - widths_values[idx - 1])
+
+    return torch.tensor(interpolated_widths, device=device, dtype=torch.float32)
+
 def sample_step(model, x, t, condition, alpha_bar):
-    
     noise_pred = model(x, t, condition)
-    #print("XXXXXXX Nominator")
-    #print((x - noise_pred * (1 - alpha_bar[t]).sqrt()))
-    #print("XXXXXXX Denominator")
-    #print(alpha_bar[t].sqrt())
-    
     return (x - noise_pred * (1 - alpha_bar[t]).sqrt()) / alpha_bar[t].sqrt()
 
 
-def diffusion_loss(model, x, condition, noise_schedule, timesteps):
+def diffusion_loss(model, x, condition, noise_schedule, timesteps, widths_data):
     # Choose a random timestep
     t = torch.randint(0, timesteps, (x.shape[0],)).to(x.device)
-    noise = 10 * torch.randn_like(x).to(x.device)
     alpha_bar = torch.cumprod(1 - noise_schedule, dim=0)
-    
+
+    # Interpolate widths based on condition (energy)
+    widths = interpolate_widths(condition, widths_data, x.device)
+
+    # Add channel-specific noise scaled by the widths
+    noise = widths * torch.randn_like(x).to(x.device)
+
     # Ensure alpha_bar[t] has an extra dimension to match x and noise
     alpha_bar_t = alpha_bar[t].unsqueeze(-1)  # Shape: (batch_size, 1)
-    
+
     # Forward diffuse x to add noise
     x_noisy = x * alpha_bar_t.sqrt() + noise * (1 - alpha_bar_t).sqrt()
-    
+
     # Calculate model prediction and loss
     noise_pred = model(x_noisy, t, condition)
     return ((noise - noise_pred) ** 2).mean()
-    #return ((noise - noise_pred) ** 2).sum()
 
 
-    
 class SelfAttention(nn.Module):
     def __init__(self, dim):
         super(SelfAttention, self).__init__()
-        #self.query = nn.Linear(dim, dim)
-        #self.key = nn.Linear(dim, dim)
-        #self.value = nn.Linear(dim, dim)
-
-        self.query = nn.Sequential(nn.Linear(dim, dim),nn.ReLU(),nn.Linear(dim,dim))
-        self.key = nn.Sequential(nn.Linear(dim, dim),nn.ReLU(),nn.Linear(dim,dim))
-        self.value = nn.Sequential(nn.Linear(dim, dim),nn.ReLU(),nn.Linear(dim,dim))
-
+        self.query = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
+        self.key = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
+        self.value = nn.Sequential(nn.Linear(dim, dim), nn.ReLU(), nn.Linear(dim, dim))
         self.softmax = nn.Softmax(dim=-1)
 
-        
     def forward(self, x):
-        # x shape: (batch_size, sequence_length, dim)
-        
-        #m = nn.BatchNorm1d(5).to('cuda:1')
-        #x = m(x)
         queries = self.query(x).unsqueeze(1)  # Shape: (batch_size, 1, dim)
         keys = self.key(x).unsqueeze(1)       # Shape: (batch_size, 1, dim)
         values = self.value(x).unsqueeze(1)   # Shape: (batch_size, 1, dim)
-        
+
         # Calculate attention weights
         attention_weights = self.softmax(torch.bmm(queries, keys.transpose(1, 2)) / (x.shape[-1] ** 0.5))
         attention_output = torch.bmm(attention_weights, values)
-        
-        # Remove the extra dimension and return output
         return attention_output.squeeze(1)
 
 
@@ -77,20 +88,20 @@ class AttentionDiffusionModel(nn.Module):
         self.data_dim = data_dim
         self.condition_dim = condition_dim
         self.device = device  # Store the device
-        
+
         # Network layers
         self.attention = SelfAttention(data_dim + condition_dim)
         self.fc1 = nn.Linear(data_dim + condition_dim, 128)
         self.fc2 = nn.Linear(128, 128)
         self.fc3 = nn.Linear(128, data_dim)
-        
+
     def forward(self, x, t, condition):
         # Concatenate data with condition
         x = torch.cat([x, condition], dim=-1)
-        
+
         # Add attention mechanism
         x = self.attention(x)
-        
+
         # Feedforward layers
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
