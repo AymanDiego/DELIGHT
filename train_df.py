@@ -98,7 +98,7 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
             with torch.no_grad():
                 batch_data, batch_context = batch
-                loss_val = diffusion_loss(df_model, data_val, context_val, noise_schedule, timesteps)
+                loss_val = diffusion_loss(df_model, data_val, context_val, noise_schedule, timesteps, widths_data)
                 total_loss_val += loss_val.item()
         
         # Print loss every epoch
