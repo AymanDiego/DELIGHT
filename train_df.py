@@ -10,11 +10,16 @@ hep.style.use(hep.style.ATLAS)
 import pandas as pd
 import numpy as np
 import torch
-from model import AttentionDiffusionModel, linear_noise_schedule, diffusion_loss, sample_step
+from model import AttentionDiffusionModel, linear_noise_schedule, diffusion_loss, sample_step, precompute_widths
 
 # Load widths.csv
 widths_data = pd.read_csv("widths.csv")
-print("Columns in widths_data:", widths_data.columns)
+
+# Define energy bins for the full range (0 to 1,000,000 eV) with finer granularity
+energy_bins = [0, 1000000, 100]
+
+# Precompute average widths for energy bins
+bins, avg_widths = precompute_widths(widths_data, energy_bins)
 
 # ArgumentParser to handle command-line arguments
 def parse_args():
@@ -61,7 +66,7 @@ def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, le
 
 
 # Training the diffusion model
-def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, widths_data, num_epochs=1000, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
+def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, bins, avg_widths, num_epochs=1000, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
     optimizer = torch.optim.Adam(df_model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     
@@ -86,7 +91,7 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_train, desc=f"Training epoch {epoch}"):
             batch_data, batch_context = batch
             optimizer.zero_grad()
-            loss = diffusion_loss(df_model, data_train, context_train, noise_schedule, timesteps, widths_data)
+            loss = diffusion_loss(df_model, data_train, context_train, noise_schedule, timesteps, bins, avg_widths)
             total_loss_train += loss.item()
             loss.backward()
             optimizer.step()
@@ -98,7 +103,7 @@ def train_diffusion_model(df_model, data_train, context_train, data_val, context
         for batch in tqdm.tqdm(dataloader_val, desc=f"Validation epoch {epoch}"):
             with torch.no_grad():
                 batch_data, batch_context = batch
-                loss_val = diffusion_loss(df_model, data_val, context_val, noise_schedule, timesteps, widths_data)
+                loss_val = diffusion_loss(df_model, data_val, context_val, noise_schedule, timesteps, bins, avg_widths)
                 total_loss_val += loss_val.item()
         
         # Print loss every epoch
@@ -187,7 +192,7 @@ if __name__ == "__main__":
         os.makedirs(save_dir)
 
     # Loading data
-    cutoff_min_e = 0. # eV. Ingnore interactions below that.
+    cutoff_min_e = 100000. # eV. Ingnore interactions below that.
     cutoff_max_e = 1000000. # eV. Ingnore interactions higher than that.
     logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
     files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*npy")
@@ -222,6 +227,6 @@ if __name__ == "__main__":
 
 
     # Train the model
-    train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=learning_rate, timesteps=timesteps, widths_data=widths_data)
+    train_diffusion_model(df_model, data_train_4d, context_train_5d, data_val_4d, context_val_5d, num_epochs=num_epochs, noise_schedule=noise_schedule, batch_size=batch_size, learning_rate=learning_rate, timesteps=timesteps, bins=bins, avg_widths=avg_widths)
     logger.info(f'Done training.')
     

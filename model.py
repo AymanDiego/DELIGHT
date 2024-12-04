@@ -12,55 +12,45 @@ from nflows.nn.nets import ResidualNet
 def linear_noise_schedule(timesteps, start=1e-4, end=2e-2):
     return torch.linspace(start, end, timesteps)
 
-
-def interpolate_widths(condition, widths_data, device):
-    """
-    Interpolates widths for each channel based on the condition (energy).
-    """
-    energies = widths_data["energies"].values
-    channel_columns = ["ch1", "ch2", "ch3", "ch4"]  # Select only channel columns
-    widths_values = widths_data[channel_columns].values  # Extract relevant data
-
-    # Interpolation
-    interpolated_widths = np.zeros((condition.shape[0], len(channel_columns)))
-    for i, energy in enumerate(condition.cpu().numpy().flatten()):
-        idx = np.searchsorted(energies, energy, side="left")
-        if idx == 0:
-            interpolated_widths[i] = widths_values[0]
-        elif idx >= len(energies):
-            interpolated_widths[i] = widths_values[-1]
-        else:
-            fraction = (energy - energies[idx - 1]) / (energies[idx] - energies[idx - 1])
-            interpolated_widths[i] = widths_values[idx - 1] + fraction * (widths_values[idx] - widths_values[idx - 1])
-
-    return torch.tensor(interpolated_widths, device=device, dtype=torch.float32)
-
 def sample_step(model, x, t, condition, alpha_bar):
     noise_pred = model(x, t, condition)
     return (x - noise_pred * (1 - alpha_bar[t]).sqrt()) / alpha_bar[t].sqrt()
 
+def precompute_widths(widths_data, energy_bins):
+    """
+    Precompute average widths for each energy bin.
+    """
+    bins = np.linspace(energy_bins[0], energy_bins[1], energy_bins[2])  # [start, stop, num_bins]
+    avg_widths = []
 
-def diffusion_loss(model, x, condition, noise_schedule, timesteps, widths_data):
-    # Choose a random timestep
+    for i in range(len(bins) - 1):
+        mask = (widths_data["energies"] >= bins[i]) & (widths_data["energies"] < bins[i + 1])
+        avg_widths.append(widths_data.loc[mask, ["ch1", "ch2", "ch3", "ch4"]].mean().values)
+
+    return bins, np.array(avg_widths)
+
+def assign_precomputed_widths(condition, bins, avg_widths):
+    """
+    Assign precomputed widths based on the energy bin.
+    """
+    indices = np.digitize(condition.cpu().numpy().flatten(), bins) - 1
+    indices = np.clip(indices, 0, len(avg_widths) - 1)  # Ensure indices are within bounds
+    return torch.tensor(avg_widths[indices], device=condition.device, dtype=torch.float32)
+
+def diffusion_loss(model, x, condition, noise_schedule, timesteps, bins, avg_widths):
     t = torch.randint(0, timesteps, (x.shape[0],)).to(x.device)
+    noise = torch.randn_like(x).to(x.device)
+
     alpha_bar = torch.cumprod(1 - noise_schedule, dim=0)
+    alpha_bar_t = alpha_bar[t].unsqueeze(-1)
+    
+    # Assign precomputed widths
+    widths = assign_precomputed_widths(condition, bins, avg_widths)
+    noise *= widths  # Scale noise by widths
 
-    # Interpolate widths based on condition (energy)
-    widths = interpolate_widths(condition, widths_data, x.device)
-
-    # Add channel-specific noise scaled by the widths
-    noise = widths * torch.randn_like(x).to(x.device)
-
-    # Ensure alpha_bar[t] has an extra dimension to match x and noise
-    alpha_bar_t = alpha_bar[t].unsqueeze(-1)  # Shape: (batch_size, 1)
-
-    # Forward diffuse x to add noise
     x_noisy = x * alpha_bar_t.sqrt() + noise * (1 - alpha_bar_t).sqrt()
-
-    # Calculate model prediction and loss
     noise_pred = model(x_noisy, t, condition)
     return ((noise - noise_pred) ** 2).mean()
-
 
 class SelfAttention(nn.Module):
     def __init__(self, dim):
