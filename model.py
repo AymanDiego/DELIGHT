@@ -46,7 +46,12 @@ def diffusion_loss(model, x, condition, noise_schedule, timesteps, bins, avg_wid
     
     # Assign precomputed widths
     widths = assign_precomputed_widths(condition, bins, avg_widths)
-    noise *= widths  # Scale noise by widths
+
+    # Scale widths as per the required noise magnitude
+    scaled_widths = widths * 100  # Scaling factor to match the desired noise levels
+
+    # Generate noise using the scaled widths
+    noise = scaled_widths * torch.randn_like(x).to(x.device)
 
     x_noisy = x * alpha_bar_t.sqrt() + noise * (1 - alpha_bar_t).sqrt()
     noise_pred = model(x_noisy, t, condition)
