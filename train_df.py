@@ -16,7 +16,7 @@ from model import AttentionDiffusionModel, linear_noise_schedule, diffusion_loss
 widths_data = pd.read_csv("widths.csv")
 
 # Define energy bins for the full range (0 to 1,000,000 eV) with finer granularity
-energy_bins = [0, 1000000, 10000]
+energy_bins = [0, 1000000, 100]
 
 # Precompute average widths for energy bins
 bins, avg_widths = precompute_widths(widths_data, energy_bins)
