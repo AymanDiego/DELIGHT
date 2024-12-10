@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     for i, e in enumerate(energies):
         # Skip energies outside the specified range
-        if e < 1000 or e > 10000:
+        if e < 10000 or e > 100000:
             continue
 
         if i % 10 != 0:
