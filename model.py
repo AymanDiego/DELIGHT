@@ -33,7 +33,8 @@ def assign_precomputed_widths(condition, bins, avg_widths):
     """
     Assign precomputed widths based on the energy bin.
     """
-    indices = np.digitize(condition.cpu().numpy().flatten(), bins) - 1
+    condition_eV = condition * 1e6  # Convert MeV to eV
+    indices = np.digitize(condition_eV.cpu().numpy().flatten(), bins) - 1
     indices = np.clip(indices, 0, len(avg_widths) - 1)  # Ensure indices are within bounds
     return torch.tensor(avg_widths[indices], device=condition.device, dtype=torch.float32)
 
@@ -49,7 +50,6 @@ def diffusion_loss(model, x, condition, noise_schedule, timesteps, bins, avg_wid
 
     # Scale widths as per the required noise magnitude
     scaled_widths = widths * 100  # Scaling factor to match the desired noise levels
-
     # Generate noise using the scaled widths
     noise = scaled_widths * torch.randn_like(x).to(x.device)
 

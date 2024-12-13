@@ -144,7 +144,6 @@ def concat_files(filelist,cutoff_min,cutoff_max):
     for i,f in tqdm.tqdm(enumerate(filelist), total=len(filelist), desc="Loading data into array"):
         # Load file and retrieve all four channels
         data = np.load(f)[:, :4]
-        
         # Calculate energy as the sum of all channels
         energy = np.sum(data, axis=1).reshape(-1, 1)
 
@@ -192,8 +191,8 @@ if __name__ == "__main__":
         os.makedirs(save_dir)
 
     # Loading data
-    cutoff_min_e = 10000. # eV. Ingnore interactions below that.
-    cutoff_max_e = 100000. # eV. Ingnore interactions higher than that.
+    cutoff_min_e = 0. # eV. Ingnore interactions below that.
+    cutoff_max_e = 1000000. # eV. Ingnore interactions higher than that.
     logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
     files_train = glob.glob("/ceph/bmaier/delight/ml/nf/data/train/*npy")
     files_val = glob.glob("/ceph/bmaier/delight/ml/nf/data/val/*npy")
