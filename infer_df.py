@@ -5,6 +5,7 @@ import mplhep as hep
 import numpy as np
 import torch
 import argparse
+import corner
 from model import AttentionDiffusionModel, linear_noise_schedule, sample_step
 
 hep.style.use(hep.style.ATLAS)
@@ -105,4 +106,41 @@ if __name__ == "__main__":
         plt.legend(fontsize=17)
         plt.tight_layout()
         plt.savefig(f"{save_dir}/gen_{i}.png", bbox_inches='tight', dpi=300)
+
+        # Generating and saving the corner plot
+        print(f"Generating corner plot for index {i}...")
+
+        # Scale the generated data to match the scale of simulated data for comparison
+        gen_scaled = gen * energy[0]  # Ensure generated data is scaled correctly
+
+        # Debugging: Print the first 10 rows of scaled and simulated data for verification
+        print(f"Simulated Data (First 10 Rows):\n{sim[:10]}")
+        print(f"Generated Data (First 10 Rows):\n{gen_scaled[:10]}")
+
+        try:
+            # Create the corner plot for simulated data (blue)
+            fig_corner = corner.corner(
+                sim,
+                labels=["Phonon", "Triplet", "UV", "IR"],
+                color="blue",
+                show_titles=True,
+                hist_kwargs={"density": True},
+                plot_contours=True,
+            )
+
+            # Overlay the generated data (red) on the same corner plot
+            corner.corner(
+                gen_scaled,
+                fig=fig_corner,
+                color="red",
+                hist_kwargs={"density": True},
+                plot_contours=True,
+            )
+
+            # Save the combined corner plot
+            plt.savefig(f"{save_dir}/corner_combined_{i}.png", bbox_inches="tight", dpi=300)
+            print(f"Corner plot saved to: {save_dir}/corner_combined_{i}.png")
+
+        except Exception as e:
+            print(f"Error during corner plot generation for index {i}: {e}")
 
