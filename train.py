@@ -18,7 +18,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train Conditional Normalizing Flow Model")
     
     # Add argument for GPU selection
-    parser.add_argument('--device', type=str, default='cuda:0', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
+    parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run the training on (e.g., cuda:0, cuda:1, cpu)')
     
     # Add argument for specifying the directory to save model files
     parser.add_argument('--model_dir', type=str, default='models/', help='Directory to save the model checkpoints')
@@ -32,7 +32,7 @@ def parse_args():
 
     # Add argument for number of epochs, learning rate, weight decay
     parser.add_argument('--num_epochs', type=int, default=301, help='Number of training epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-2, help='Learning rate for optimizer')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='Learning rate for optimizer')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
 
     parser.add_argument('--loss_dir', type=str, default='', help='Specify an extra directory to append for saving files (e.g., "run_01")')
@@ -200,39 +200,20 @@ def train_conditional_flow_model(flow_model, data_train, context_train, data_val
     plt.savefig(f"{save_dir}/loss.png", bbox_inches='tight', dpi=300)
     plt.savefig(f"{save_dir}/loss.pdf", bbox_inches='tight')
 
-def concat_files(filelist,cutoff_min,cutoff_max):
+def concat_files(filelist, cutoff):
+    e_array = np.geomspace(10, 1e6, 500)
     all_data = None
-    for i,f in tqdm.tqdm(enumerate(filelist), total=len(filelist), desc="Loading data into array"):
-        # Load file and retrieve all four channels
-        data = np.load(f)[:, :4]
-        
-        # Calculate energy as the sum of all channels
-        energy = np.sum(data, axis=1).reshape(-1, 1)
-
-        if energy[0] < cutoff_min:
+    for f in tqdm.tqdm(filelist, desc="Loading data into array"):
+        idx = int(f.split("NR_final_")[-1].split("_")[0])
+        if e_array[idx] < cutoff:
             continue
-
-        if energy[0] > cutoff_max:
-            continue
-
-        # Filter out entries below the cutoff energy
-        valid_entries = energy >= 0
-        data = data[valid_entries.ravel()]
-        energy = energy[valid_entries.ravel()]
-
-        # Concatenate data if not empty
         if all_data is None:
-            all_data = np.concatenate((data/energy, energy/1000000), axis=1)
+            all_data = np.load(f)[:, :4]
         else:
-            all_data = np.concatenate((all_data, np.concatenate((data/energy, energy/1000000), axis=1)), axis=0)
-
-    idx = [i for i in range(len(all_data))]
-    print("Number of events:", len(idx))
-    random.shuffle(idx)
-    #all_data = all_data[idx][:50000]
-    all_data = all_data[idx]
-
-    return all_data
+            all_data = np.concatenate((all_data, np.load(f)[:, :4]))
+    energy = np.sum(all_data, axis=1).reshape(-1, 1)
+    
+    return np.concatenate((all_data, energy), axis=1)
 
 if __name__ == "__main__":
     args = parse_args()
@@ -252,9 +233,9 @@ if __name__ == "__main__":
         os.makedirs(save_dir)
 
     # Loading data
-    cutoff_min_e = 100000. # eV. Ingnore interactions below that.
-    cutoff_max_e = 1000000. # eV. Ingnore interactions higher than that.
-    logger.info(f'Load data for evens with energy larger than {cutoff_min_e} and smaller than {cutoff_max_e} eV.')
+    cutoff_e = 0.0  # eV. Ignore interactions below that.
+    logger.info(f'Load data for events with energy larger than {cutoff_e} eV.')
+
 
     if args.file_pattern == 'all':
         files_train = glob.glob("/ceph/aratey/delight/ml/nf/data/train/*.npy")
@@ -268,8 +249,8 @@ if __name__ == "__main__":
 
     random.seed(123)
     random.shuffle(files_train)
-    data_train = concat_files(files_train,cutoff_min_e,cutoff_max_e)
-    data_val = concat_files(files_val,cutoff_min_e,cutoff_max_e)
+    data_train = concat_files(files_train, cutoff_e)
+    data_val = concat_files(files_val, cutoff_e)
 
     # Normalize the training and validation data
     if args.normalize_energies:
