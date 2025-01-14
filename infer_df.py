@@ -2,11 +2,12 @@ import os
 import glob
 import matplotlib.pyplot as plt
 import mplhep as hep
+import pandas as pd
 import numpy as np
 import torch
 import argparse
 import corner
-from model import AttentionDiffusionModel, linear_noise_schedule, sample_step
+from model import AttentionDiffusionModel, linear_noise_schedule, sample_step, precompute_widths, assign_precomputed_widths
 
 hep.style.use(hep.style.ATLAS)
 
@@ -18,18 +19,35 @@ def parse_args():
     parser.add_argument('--device', type=str, default='cuda:1', help='Specify the device to run inference on (e.g., cuda:0, cuda:1, cpu)')
     return parser.parse_args()
 
-# Sampling function
-def sample(model, condition, timesteps, data_dim, device):
+# Sampling function with denoising logic
+def sample_with_denoising(model, condition, timesteps, data_dim, device, bins, avg_widths):
+    """
+    Perform reverse diffusion sampling with denoising logic based on training noise.
+    """
     # Initialize latent variable
     x = torch.randn(condition.shape[0], data_dim).to(device, dtype=torch.float32)
 
-    # Compute alpha_bar with clamping for stability
+    # Compute alpha_bar for noise schedule
     noise_schedule = linear_noise_schedule(timesteps).to(device, dtype=torch.float32)
     alpha_bar = torch.cumprod(1 - noise_schedule, dim=0)
 
     # Reverse sampling loop
     for t in reversed(range(timesteps)):
-        x = sample_step(model, x, t, condition.to(device, dtype=torch.float32), alpha_bar)
+        t_tensor = torch.full((x.shape[0],), t, device=device, dtype=torch.long)
+
+        # Assign precomputed widths based on energy condition
+        widths = assign_precomputed_widths(condition, bins, avg_widths)
+
+        # Dynamically scale noise during reverse diffusion
+        scaled_widths = widths * 100  # Same scaling factor as used in training
+        noise = scaled_widths * torch.randn_like(x).to(device)
+
+        # Model-predicted noise for denoising
+        noise_pred = model(x, t_tensor, condition)
+
+        # Reverse the diffusion step
+        x = (x - noise_pred * (1 - alpha_bar[t]).sqrt()) / alpha_bar[t].sqrt()
+        x = x + noise * (1 - alpha_bar[t]).sqrt()
 
     return x
 
@@ -48,6 +66,11 @@ if __name__ == "__main__":
     data_dim = 4
     condition_dim = 1
     timesteps = 25
+
+    # Load precomputed widths
+    widths_data = pd.read_csv("widths.csv")
+    energy_bins = [0, 1000000, 10000]
+    bins, avg_widths = precompute_widths(widths_data, energy_bins)
 
     # Instantiate and load the diffusion model
     df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=device).to(device)
@@ -79,13 +102,13 @@ if __name__ == "__main__":
                 sim = np.concatenate((sim, np.load(f)[:, :4]))
 
         energy = np.sum(sim, axis=1).reshape(-1, 1)
-        energy = torch.tensor(energy, device=device, dtype=torch.float32)
+        energy_tensor = torch.tensor(energy, device=device, dtype=torch.float32)
 
-        # Generate samples
+        # Generate samples with denoising logic
         with torch.no_grad():
-            gen = sample(df_model, energy / 1000000, timesteps, data_dim, device)
+            gen = sample_with_denoising(df_model, energy_tensor / 1000000, timesteps, data_dim, device, bins, avg_widths)
 
-        energy = energy.detach().cpu().numpy()
+        energy = energy_tensor.detach().cpu().numpy()
         gen = gen.detach().cpu().numpy()
 
         print(f"Saving plots to: {save_dir}")
@@ -112,10 +135,6 @@ if __name__ == "__main__":
 
         # Scale the generated data to match the scale of simulated data for comparison
         gen_scaled = gen * energy[0]  # Ensure generated data is scaled correctly
-
-        # Debugging: Print the first 10 rows of scaled and simulated data for verification
-        print(f"Simulated Data (First 10 Rows):\n{sim[:10]}")
-        print(f"Generated Data (First 10 Rows):\n{gen_scaled[:10]}")
 
         try:
             # Create the corner plot for simulated data (blue)
