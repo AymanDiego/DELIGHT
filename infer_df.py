@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import torch
 import argparse
+import time  # Importing time for runtime measurement
 import corner
 from model import AttentionDiffusionModel, linear_noise_schedule, sample_step, precompute_widths, assign_precomputed_widths
 
@@ -46,18 +47,37 @@ if __name__ == "__main__":
 
     # Load widths and bins
     widths_data = pd.read_csv("widths.csv")
-    energy_bins = [0, 1000000, 10000]
+    energy_bins = [0, 1000000, 100]
     bins, avg_widths = precompute_widths(widths_data, energy_bins)
 
     # Load the model
     df_model = AttentionDiffusionModel(data_dim=data_dim, condition_dim=condition_dim, timesteps=timesteps, device=device).to(device)
-    checkpoint = torch.load(f'{args.model_dir}/epoch-149.pt', map_location=device)
+    checkpoint = torch.load(f'{args.model_dir}/epoch-39.pt', map_location=device)
     df_model.load_state_dict(checkpoint['model'])
     df_model.eval()
 
+    # Specific energies for runtime measurement
+    specific_energies = np.array([10., 100., 1.e3, 1.e4, 1.e5, 1.e6])
+
+    # Measure runtime for specific energies
+    runtime_log = []
+    for energy in specific_energies:
+        fixed_value_tensor = torch.tensor([[energy]], device=device, dtype=torch.float32)
+        start_time = time.time()
+        with torch.no_grad():
+            _ = sample_with_denoising(df_model, fixed_value_tensor / 1e6, timesteps, data_dim, device, bins, avg_widths)
+        end_time = time.time()
+        runtime_log.append((energy, end_time - start_time))
+        print(f"Energy: {energy} eV, Runtime: {end_time - start_time:.6f} s")
+
+    # Save runtime log to CSV
+    runtime_df = pd.DataFrame(runtime_log, columns=["Energy (eV)", "Runtime (s)"])
+    runtime_df.to_csv(f"{save_dir}/runtime_log_specific.csv", index=False)
+    print(f"Runtime log for specific energies saved to {save_dir}/runtime_log_specific.csv.")
+
     energies = np.geomspace(10, 1e6, 500)
     for i, e in enumerate(energies):
-        if e < 100000 or e > 1000000 or i % 10 != 0:
+        if e < 0 or e > 1000000 or i % 10 != 0:
             continue
 
         print(f"Loading simulated data corresponding to index {i}")

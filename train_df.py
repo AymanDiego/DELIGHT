@@ -66,7 +66,7 @@ def save_diffusion_hyperparameters_to_csv(data_dim, condition_dim, timesteps, le
 
 
 # Training the diffusion model
-def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, bins, avg_widths, num_epochs=1000, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
+def train_diffusion_model(df_model, data_train, context_train, data_val, context_val, bins, avg_widths, num_epochs=40, noise_schedule=None, batch_size=512, learning_rate=1e-3, timesteps=300):
     optimizer = torch.optim.Adam(df_model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     timesteps = 25
     batch_size = 1024
     learning_rate = 1e-2
-    num_epochs = 150
+    num_epochs = 40
     noise_schedule = linear_noise_schedule(timesteps).to(args.device)
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     logger.info(f'Training on {device}')
